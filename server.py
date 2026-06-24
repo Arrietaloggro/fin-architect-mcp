@@ -1,4 +1,3 @@
-```python
 from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
