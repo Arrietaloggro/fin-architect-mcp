@@ -1920,9 +1920,8 @@ async def extract_guidelines(
 ) -> str:
     """
     Analiza un conjunto de conversaciones reales entre clientes y FIN para
-    detectar patrones repetitivos y proponer nuevas guidelines ordenadas
-    por impacto. Estima reducción de escalamientos y mejora de resolución
-    autónoma con heurísticas consistentes con el resto del toolset.
+    detectar EVENTOS semánticos (no solo palabras), agrupar los que describen
+    el mismo comportamiento y proponer guidelines ordenadas por impacto.
     """
 
     total = len(conversations)
@@ -1947,8 +1946,10 @@ async def extract_guidelines(
             "- Con una sola conversación el análisis de patrones no es estadísticamente representativo."
         )
 
+    from collections import defaultdict
+
     # ------------------------------------------------------------------ #
-    # Taxonomías compartidas con el resto del toolset                      #
+    # Taxonomía de intenciones (consistente con el resto del toolset)      #
     # ------------------------------------------------------------------ #
     intention_map = [
         ("Facturación",   ["factura", "cobro", "pago", "cargo", "reembolso", "facturar", "cufe"]),
@@ -1965,47 +1966,282 @@ async def extract_guidelines(
         ("Seguridad",     ["seguridad", "fraude", "robo", "suplantación", "bloqueo"]),
     ]
 
-    problem_signals = {
-        "solución documentada insuficiente": [
-            "ya seguí los pasos", "seguí las instrucciones", "hice lo que dice",
-            "intenté lo del artículo", "el artículo no funciona", "ya hice todo lo que dice",
-        ],
-        "escalamiento sin criterios": [
-            "me pasaron con", "me transfirieron", "agente no supo",
-            "escalaron sin", "nadie me ayudó", "me dejaron en espera",
-        ],
-        "falta de resolución documentada": [
-            "no encuentro", "no hay artículo", "no existe documentación",
-            "no hay guía", "no encontré nada",
-        ],
-        "respuesta genérica de FIN": [
-            "me dijo lo mismo", "misma respuesta", "respuesta repetida",
-            "no me ayuda", "respuesta automática", "no entiende",
-        ],
-        "fallo técnico sin guía": [
-            "error al", "no carga", "pantalla en blanco", "se traba",
-            "no responde", "caído", "mensaje de error",
-        ],
-        "urgencia no atendida": [
-            "hoy mismo", "urgente", "necesito ahora", "no puedo esperar",
-            "es crítico", "turno", "antes de cerrar",
-        ],
-    }
-
-    emotion_signals = {
-        "Frustrado": ["furioso", "harto", "pésimo", "terrible", "inaceptable", "no sirve"],
-        "Molesto":   ["molesto", "enojado", "fastidio", "mal servicio", "molesta"],
-        "Urgente":   ["urgente", "hoy mismo", "inmediatamente", "emergencia", "no puedo esperar", "turno"],
-        "Confundido":["no entiendo", "no sé", "confundido", "cómo", "qué significa", "no comprendo"],
-    }
+    # ------------------------------------------------------------------ #
+    # Definición de eventos semánticos                                     #
+    # Cada evento tiene: id, etiqueta legible, señales de detección,      #
+    # impacto base, riesgo de escalamiento innecesario                    #
+    # ------------------------------------------------------------------ #
+    EVENT_CATALOG = [
+        {
+            "id":      "user_tried_docs",
+            "label":   "Usuario agotó solución documentada",
+            "signals": [
+                "ya seguí los pasos", "seguí las instrucciones", "hice lo que dice",
+                "intenté lo del artículo", "el artículo no funciona",
+                "ya hice todo lo que dice", "seguí la guía", "ya seguí la guía",
+                "ya intenté la solución", "ya lo intenté", "hice los pasos",
+                "ya hice todos los pasos", "ya consulté", "ya la hice",
+                "ya la consulté", "ya lo hice", "ya intenté",
+            ],
+            "impact":       55,
+            "esc_risk":     60,
+        },
+        {
+            "id":      "fin_repeats_solution",
+            "label":   "FIN repitió solución ya agotada",
+            "signals": [
+                "consulta este artículo", "consulta el artículo", "revisa este artículo",
+                "revisa el artículo", "consulta la guía", "revisa la guía",
+                "consulta nuevamente", "revisa nuevamente", "consulta nuevamente la guía",
+                "te recomiendo revisar", "te invito a consultar",
+            ],
+            "impact":       50,
+            "esc_risk":     55,
+        },
+        {
+            "id":      "problem_persists",
+            "label":   "Usuario confirma que el problema continúa",
+            "signals": [
+                "continúa igual", "sigue igual", "no se solucionó", "continúa el error",
+                "no funcionó", "no funciona", "no se resolvió", "persiste",
+                "aún no funciona", "todavía no funciona", "el problema continúa",
+                "no se ha resuelto",
+            ],
+            "impact":       50,
+            "esc_risk":     50,
+        },
+        {
+            "id":      "user_urgency",
+            "label":   "Usuario expresa urgencia",
+            "signals": [
+                "hoy mismo", "urgente", "necesito ahora", "no puedo esperar",
+                "es crítico", "antes de cerrar", "para terminar mi turno",
+                "necesito resolver hoy", "con urgencia",
+            ],
+            "impact":       45,
+            "esc_risk":     40,
+        },
+        {
+            "id":      "user_frustration",
+            "label":   "Usuario expresa frustración",
+            "signals": [
+                "furioso", "harto", "pésimo", "terrible", "inaceptable",
+                "no sirve", "molesto", "enojado", "fastidio", "mal servicio",
+                "no me ayuda", "frustr",
+            ],
+            "impact":       45,
+            "esc_risk":     45,
+        },
+        {
+            "id":      "fin_generic_response",
+            "label":   "FIN no respondió la intención principal",
+            "signals": [
+                "me dijo lo mismo", "misma respuesta", "respuesta repetida",
+                "respuesta automática", "no entiende", "no me respondió",
+                "no respondió mi pregunta", "cambió de tema",
+            ],
+            "impact":       40,
+            "esc_risk":     35,
+        },
+        {
+            "id":      "fin_escalated",
+            "label":   "FIN escaló el caso",
+            "signals": [
+                "me pasaron con", "me transfirieron", "agente humano",
+                "escalaron", "me dejaron en espera", "espera mientras te conecto",
+            ],
+            "impact":       35,
+            "esc_risk":     30,
+        },
+        {
+            "id":      "problem_resolved",
+            "label":   "Usuario confirma resolución exitosa",
+            "signals": [
+                "gracias", "resuelto", "funcionó", "listo", "perfecto",
+                "excelente", "ya funciona", "se solucionó", "muchas gracias",
+            ],
+            "impact":       0,
+            "esc_risk":     0,
+        },
+        {
+            "id":      "fin_requests_info",
+            "label":   "FIN solicitó información adicional",
+            "signals": [
+                "¿puedes indicarme", "¿podrías compartir", "necesito que me indiques",
+                "¿cuál es el error", "¿qué mensaje", "por favor comparte",
+                "¿tienes el número",
+            ],
+            "impact":       15,
+            "esc_risk":     10,
+        },
+        {
+            "id":      "user_multiple_attempts",
+            "label":   "Usuario menciona múltiples intentos",
+            "signals": [
+                "varias veces", "dos veces", "tres veces", "muchas veces",
+                "ya lo intenté varias", "lo he hecho varias",
+            ],
+            "impact":       45,
+            "esc_risk":     50,
+        },
+        {
+            "id":      "user_blocked",
+            "label":   "Usuario está operativamente bloqueado",
+            "signals": [
+                "no puedo continuar", "no puedo trabajar", "no puedo operar",
+                "no puedo cerrar", "no puedo emitir", "no puedo facturar",
+                "bloqueado", "sin acceso", "no me deja", "no permite",
+            ],
+            "impact":       55,
+            "esc_risk":     55,
+        },
+        {
+            "id":      "unnecessary_escalation_risk",
+            "label":   "Escalamiento evitable detectado",
+            "signals": [],   # se infiere combinando eventos, no por señal directa
+            "impact":       50,
+            "esc_risk":     65,
+        },
+    ]
 
     # ------------------------------------------------------------------ #
-    # Análisis de cada conversación                                        #
+    # Función de detección de eventos en una conversación                 #
     # ------------------------------------------------------------------ #
-    conv_data = []   # [{intention, problems, emotions, text}, ...]
+    def detect_events(text):
+        found = []
+        for ev in EVENT_CATALOG:
+            if ev["id"] == "unnecessary_escalation_risk":
+                continue   # se evalúa después por combinación
+            if any(sig in text for sig in ev["signals"]):
+                found.append(ev["id"])
+
+        # Evento derivado: escalamiento evitable = docs agotados + FIN repite
+        if "user_tried_docs" in found and "fin_repeats_solution" in found:
+            found.append("unnecessary_escalation_risk")
+
+        return found
+
+    # ------------------------------------------------------------------ #
+    # Mapa de agrupación: secuencia de eventos → nombre de patrón         #
+    # Conversaciones con los mismos eventos forman el mismo patrón        #
+    # ------------------------------------------------------------------ #
+    PATTERN_NAMES = {
+        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists"]):
+            "FIN repite solución ya agotada y el problema continúa",
+        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists", "user_urgency"]):
+            "FIN repite solución ya agotada con urgencia del usuario",
+        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists", "user_blocked"]):
+            "FIN repite solución ya agotada mientras el usuario está bloqueado",
+        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists",
+                   "user_urgency", "user_blocked"]):
+            "FIN repite solución ya agotada — usuario bloqueado y urgente",
+        frozenset(["user_tried_docs", "fin_repeats_solution"]):
+            "FIN repite solución ya agotada",
+        frozenset(["user_tried_docs", "problem_persists"]):
+            "Solución documentada insuficiente para el caso",
+        frozenset(["user_urgency", "problem_persists"]):
+            "Urgencia no atendida con problema persistente",
+        frozenset(["user_urgency"]):
+            "Urgencia del usuario no priorizada",
+        frozenset(["user_frustration", "problem_persists"]):
+            "Frustración del usuario ante problema no resuelto",
+        frozenset(["user_blocked", "problem_persists"]):
+            "Usuario operativamente bloqueado sin resolución",
+        frozenset(["fin_generic_response"]):
+            "FIN no respondió la intención principal del usuario",
+        frozenset(["fin_escalated"]):
+            "Caso escalado por FIN",
+        frozenset(["user_multiple_attempts", "problem_persists"]):
+            "Usuario intentó múltiples veces sin resolución",
+        frozenset(["unnecessary_escalation_risk"]):
+            "Escalamiento evitable: FIN no reconoció docs agotados",
+    }
+
+    def pattern_name_for(event_set):
+        # Busca la clave más específica (más elementos en común)
+        best_name = None
+        best_overlap = -1
+        for key, name in PATTERN_NAMES.items():
+            overlap = len(key & event_set)
+            if overlap == len(key) and overlap > best_overlap:
+                best_name = name
+                best_overlap = overlap
+        if best_name:
+            return best_name
+        # Fallback: describir el evento de mayor impacto presente
+        for ev in sorted(EVENT_CATALOG, key=lambda e: -e["impact"]):
+            if ev["id"] in event_set and ev["id"] != "problem_resolved":
+                return f"Patrón: {ev['label']}"
+        return "Comportamiento de FIN sin patrón catalogado"
+
+    # ------------------------------------------------------------------ #
+    # Guideline templates por patrón de eventos                           #
+    # ------------------------------------------------------------------ #
+    GUIDELINE_TEMPLATES = {
+        "user_tried_docs+fin_repeats_solution": (
+            "Si el usuario de {intention} indica haber seguido los pasos documentados "
+            "sin resultado exitoso, verifica que el problema persista después de los pasos. "
+            "Cuando se confirme, no repitas la misma solución: escala al agente humano "
+            "incluyendo el error exacto, los pasos realizados y el resultado obtenido."
+        ),
+        "user_urgency": (
+            "Cuando el usuario exprese urgencia en un caso de {intention}, "
+            "prioriza la atención de inmediato. "
+            "Si no es posible resolver en la primera interacción, "
+            "escala al agente indicando la urgencia y el detalle del caso."
+        ),
+        "user_blocked": (
+            "Cuando el usuario reporte un bloqueo operativo en {intention}, "
+            "verifica si existe solución documentada y guía paso a paso. "
+            "Únicamente cuando la solución no resuelva el bloqueo, "
+            "escala al agente con el contexto completo."
+        ),
+        "fin_generic_response": (
+            "Antes de responder un caso de {intention}, identifica el escenario específico "
+            "del usuario y adapta la respuesta al contexto concreto "
+            "en lugar de entregar una respuesta genérica o repetir el mismo artículo."
+        ),
+        "user_multiple_attempts": (
+            "Si el usuario indica haber intentado la solución documentada múltiples veces "
+            "en {intention} sin resultado, no repitas el mismo artículo. "
+            "Escala al agente con el historial de intentos y el resultado obtenido."
+        ),
+        "fin_escalated": (
+            "Antes de escalar un caso de {intention}, verifica si existe solución documentada "
+            "y si el usuario aún no la ha intentado. "
+            "Escala únicamente cuando la solución documentada no resuelva el problema."
+        ),
+        "default": (
+            "Verifica el comportamiento de FIN para casos de {intention} "
+            "donde el usuario reporta que el problema continúa tras seguir los pasos documentados."
+        ),
+    }
+
+    def guideline_for_events(event_set, intention):
+        if "user_tried_docs" in event_set and "fin_repeats_solution" in event_set:
+            tpl = GUIDELINE_TEMPLATES["user_tried_docs+fin_repeats_solution"]
+        elif "user_multiple_attempts" in event_set:
+            tpl = GUIDELINE_TEMPLATES["user_multiple_attempts"]
+        elif "user_blocked" in event_set:
+            tpl = GUIDELINE_TEMPLATES["user_blocked"]
+        elif "user_urgency" in event_set:
+            tpl = GUIDELINE_TEMPLATES["user_urgency"]
+        elif "fin_generic_response" in event_set:
+            tpl = GUIDELINE_TEMPLATES["fin_generic_response"]
+        elif "fin_escalated" in event_set:
+            tpl = GUIDELINE_TEMPLATES["fin_escalated"]
+        else:
+            tpl = GUIDELINE_TEMPLATES["default"]
+        return tpl.format(intention=intention)
+
+    # ------------------------------------------------------------------ #
+    # Analizar cada conversación → detectar intención + eventos           #
+    # ------------------------------------------------------------------ #
+    conv_data = []
 
     for conv in conversations:
-        t = conv.lower()
+        raw = conv.get("text", conv) if isinstance(conv, dict) else conv
+        t = raw.lower()
 
         intention = "General"
         for label, kws in intention_map:
@@ -2013,141 +2249,74 @@ async def extract_guidelines(
                 intention = label
                 break
 
-        problems_found = [p for p, sigs in problem_signals.items() if any(s in t for s in sigs)]
-
-        emotions_found = [e for e, sigs in emotion_signals.items() if any(s in t for s in sigs)]
-        emotion = emotions_found[0] if emotions_found else "Neutral"
-
-        conv_data.append({
-            "intention": intention,
-            "problems":  problems_found,
-            "emotion":   emotion,
-            "text":      t,
-        })
+        events = detect_events(t)
+        conv_data.append({"intention": intention, "events": events, "text": t})
 
     # ------------------------------------------------------------------ #
-    # Detectar patrones agrupando por (intención × problema)              #
+    # Agrupar por (frozenset de eventos × intención)                      #
+    # Conversaciones que comparten los mismos eventos forman un patrón    #
     # ------------------------------------------------------------------ #
-    from collections import defaultdict
+    pattern_buckets = defaultdict(list)   # key → [conv_data, ...]
 
-    # Agrupación intención
+    for d in conv_data:
+        key = (frozenset(d["events"]), d["intention"])
+        pattern_buckets[key].append(d)
+
+    # ------------------------------------------------------------------ #
+    # Conteos globales para resumen                                        #
+    # ------------------------------------------------------------------ #
     intention_counts = defaultdict(int)
     for d in conv_data:
         intention_counts[d["intention"]] += 1
 
-    # Agrupación problema
-    problem_counts = defaultdict(int)
-    for d in conv_data:
-        for p in d["problems"]:
-            problem_counts[p] += 1
+    all_events_flat = [ev for d in conv_data for ev in d["events"]]
+    event_global_counts = defaultdict(int)
+    for ev in all_events_flat:
+        event_global_counts[ev] += 1
 
-    # Agrupación emoción
-    emotion_counts = defaultdict(int)
-    for d in conv_data:
-        emotion_counts[d["emotion"]] += 1
-
-    # ------------------------------------------------------------------ #
-    # Identificar FIN OK vs FIN falló                                     #
-    # ------------------------------------------------------------------ #
-    fin_ok_signals   = ["gracias", "resuelto", "funcionó", "listo", "perfecto", "excelente"]
-    fin_fail_signals = [s for sigs in problem_signals.values() for s in sigs] + [
-        "no me ayudó", "sigue igual", "continúa igual", "no se solucionó",
-    ]
-
-    fin_ok_count   = sum(1 for d in conv_data if any(s in d["text"] for s in fin_ok_signals))
-    fin_fail_count = sum(1 for d in conv_data if any(s in d["text"] for s in fin_fail_signals))
+    fin_ok_count   = sum(1 for d in conv_data if "problem_resolved" in d["events"])
+    fin_fail_count = sum(
+        1 for d in conv_data
+        if any(e in d["events"] for e in [
+            "user_tried_docs", "fin_repeats_solution", "problem_persists",
+            "user_blocked", "unnecessary_escalation_risk",
+        ])
+    )
 
     # ------------------------------------------------------------------ #
-    # Construir patrones ordenados por frecuencia × impacto               #
+    # Construir patrones puntuados                                         #
     # ------------------------------------------------------------------ #
-
-    # Mapa de impacto base por tipo de problema
-    problem_impact_base = {
-        "solución documentada insuficiente": 40,
-        "escalamiento sin criterios":        50,
-        "falta de resolución documentada":   30,
-        "respuesta genérica de FIN":         35,
-        "fallo técnico sin guía":            45,
-        "urgencia no atendida":              40,
-    }
-
-    # Mapa de texto de guideline por problema (sin términos absolutos)
-    guideline_templates = {
-        "solución documentada insuficiente": (
-            "Si el usuario confirma haber seguido los pasos documentados para {intention} "
-            "sin resultado exitoso, no repitas la misma solución: escala al agente humano "
-            "incluyendo el error exacto, los pasos realizados y el resultado obtenido."
-        ),
-        "escalamiento sin criterios": (
-            "Antes de escalar un caso de {intention}, verifica si existe solución documentada "
-            "y si el usuario aún no la ha intentado. "
-            "Escala únicamente cuando la solución documentada no resuelva el problema."
-        ),
-        "falta de resolución documentada": (
-            "Cuando no exista solución documentada para un caso de {intention}, "
-            "indica al usuario que el caso requiere atención especializada "
-            "y transfiere al agente con el contexto completo de la conversación."
-        ),
-        "respuesta genérica de FIN": (
-            "Antes de responder un caso de {intention}, identifica el escenario específico "
-            "del usuario. Adapta la respuesta al contexto concreto "
-            "en lugar de entregar una respuesta genérica."
-        ),
-        "fallo técnico sin guía": (
-            "Cuando el usuario reporte un error técnico en {intention}, "
-            "guía paso a paso con las instrucciones documentadas. "
-            "Si el error persiste tras los pasos indicados, escala al agente "
-            "incluyendo el mensaje de error exacto."
-        ),
-        "urgencia no atendida": (
-            "Cuando el usuario exprese urgencia en un caso de {intention}, "
-            "prioriza la atención de inmediato. "
-            "Si no es posible resolver en la primera interacción, "
-            "escala al agente indicando la urgencia y el detalle del caso."
-        ),
-    }
-
-    # Calcular score de cada patrón para ordenar
     scored_patterns = []
+    seen_pattern_names = set()
 
-    # Patrones por problema
-    seen_guidelines = set()
-
-    for problem, count in problem_counts.items():
-        if count == 0:
-            continue
-
+    for (event_set, intention), convs_in_bucket in pattern_buckets.items():
+        count = len(convs_in_bucket)
         frequency_pct = round(count / total * 100)
-        base_impact   = problem_impact_base.get(problem, 25)
 
-        # Ajuste de impacto por frecuencia
+        # Impacto base = promedio de impactos de los eventos presentes
+        event_impacts = [
+            ev["impact"] for ev in EVENT_CATALOG if ev["id"] in event_set
+        ]
+        base_impact = int(sum(event_impacts) / len(event_impacts)) if event_impacts else 25
+
+        # Ajuste por frecuencia
         if frequency_pct >= 60:
-            impact_score = base_impact + 20
+            impact_score = min(base_impact + 20, 100)
         elif frequency_pct >= 30:
-            impact_score = base_impact + 10
+            impact_score = min(base_impact + 10, 100)
         else:
             impact_score = base_impact
 
-        # Intención más frecuente en las convs que tienen este problema
-        intention_for_problem = "General"
-        for d in conv_data:
-            if problem in d["problems"]:
-                intention_for_problem = d["intention"]
-                break
+        # Riesgo de escalamiento innecesario
+        esc_risk_values = [
+            ev["esc_risk"] for ev in EVENT_CATALOG if ev["id"] in event_set
+        ]
+        avg_esc_risk = int(sum(esc_risk_values) / len(esc_risk_values)) if esc_risk_values else 20
 
-        # Guideline (evitar duplicados por plantilla × intención)
-        key = (problem, intention_for_problem)
-        if key in seen_guidelines:
-            continue
-        seen_guidelines.add(key)
-
-        template = guideline_templates.get(problem, "Verifica el comportamiento de FIN para {intention}.")
-        guideline_text = template.format(intention=intention_for_problem)
-
-        # Riesgo
-        if impact_score >= 65:
+        # Riesgo categórico
+        if avg_esc_risk >= 55 or impact_score >= 65:
             risk = "ALTO"
-        elif impact_score >= 45:
+        elif avg_esc_risk >= 35 or impact_score >= 45:
             risk = "MEDIO"
         else:
             risk = "BAJO"
@@ -2160,55 +2329,95 @@ async def extract_guidelines(
         else:
             impact_label = "Bajo"
 
-        # Prioridad
-        if risk == "ALTO" or frequency_pct >= 50:
+        # Prioridad: considera frecuencia + riesgo + impacto + prob. esc. innecesario
+        priority_score = (
+            frequency_pct * 0.3
+            + impact_score * 0.3
+            + avg_esc_risk * 0.4
+        )
+        if priority_score >= 55 or risk == "ALTO":
             priority = "Crítica"
-        elif risk == "MEDIO" or frequency_pct >= 25:
+        elif priority_score >= 35 or risk == "MEDIO":
             priority = "Alta"
-        elif frequency_pct >= 10:
+        elif priority_score >= 20:
             priority = "Media"
         else:
             priority = "Baja"
 
-        # Métricas estimadas
-        esc_reduction = min(15 + frequency_pct // 2 + (20 if problem == "escalamiento sin criterios" else 0), 70)
-        auto_improvement = min(10 + frequency_pct // 3 + (15 if problem == "fallo técnico sin guía" else 0), 60)
+        # Nombre del patrón
+        pat_name = pattern_name_for(event_set)
+
+        # Deduplicar patrones con el mismo nombre (distintas intenciones se mantienen)
+        dedup_key = (pat_name, intention)
+        if dedup_key in seen_pattern_names:
+            continue
+        seen_pattern_names.add(dedup_key)
+
+        # Guideline
+        guideline_text = guideline_for_events(event_set, intention)
+
+        # Métricas
+        esc_reduction    = min(15 + frequency_pct // 2 + (avg_esc_risk // 5), 75)
+        auto_improvement = min(10 + frequency_pct // 3 + (impact_score // 8), 65)
+
+        # Justificación con eventos
+        justification_events = [
+            ev["label"] for ev in EVENT_CATALOG if ev["id"] in event_set
+        ]
 
         scored_patterns.append({
-            "problem":         problem,
-            "intention":       intention_for_problem,
-            "count":           count,
-            "frequency_pct":   frequency_pct,
-            "impact_score":    impact_score,
-            "impact_label":    impact_label,
-            "risk":            risk,
-            "priority":        priority,
-            "guideline":       guideline_text,
-            "esc_reduction":   esc_reduction,
-            "auto_improvement":auto_improvement,
+            "name":              pat_name,
+            "intention":         intention,
+            "count":             count,
+            "frequency_pct":     frequency_pct,
+            "impact_score":      impact_score,
+            "impact_label":      impact_label,
+            "risk":              risk,
+            "priority":          priority,
+            "guideline":         guideline_text,
+            "esc_reduction":     esc_reduction,
+            "auto_improvement":  auto_improvement,
+            "events":            list(event_set),
+            "justification_events": justification_events,
         })
 
-    # Ordenar de mayor a menor impacto
+    # Ordenar: impacto desc, luego frecuencia desc
     scored_patterns.sort(key=lambda x: (-x["impact_score"], -x["count"]))
 
     # ------------------------------------------------------------------ #
     # Resumen general                                                      #
     # ------------------------------------------------------------------ #
     top_intention = max(intention_counts, key=intention_counts.get) if intention_counts else "General"
-    top_emotion   = max(emotion_counts,   key=emotion_counts.get)   if emotion_counts   else "Neutral"
-    top_problem   = scored_patterns[0]["problem"] if scored_patterns else "No detectado"
+    top_event_id  = max(event_global_counts, key=event_global_counts.get) if event_global_counts else None
+    top_event_label = next(
+        (ev["label"] for ev in EVENT_CATALOG if ev["id"] == top_event_id), "No detectado"
+    ) if top_event_id else "No detectado"
+    top_pattern_name = scored_patterns[0]["name"] if scored_patterns else "No detectado"
 
     summary_lines = [
         f"Se analizaron {total} conversaciones del producto {product}.",
         f"Intención más frecuente: {top_intention} "
         f"({intention_counts[top_intention]} de {total} conversaciones).",
-        f"Emoción predominante: {top_emotion} "
-        f"({emotion_counts[top_emotion]} de {total} conversaciones).",
-        f"Problema más recurrente: {top_problem}.",
+        f"Evento más recurrente: {top_event_label} "
+        f"({event_global_counts.get(top_event_id, 0)} de {total} conversaciones).",
+        f"Patrón principal detectado: {top_pattern_name}.",
         f"Conversaciones donde FIN respondió correctamente: {fin_ok_count}.",
         f"Conversaciones donde FIN probablemente falló: {fin_fail_count}.",
         f"Patrones únicos detectados: {len(scored_patterns)}.",
     ]
+
+    # ------------------------------------------------------------------ #
+    # Eventos globales para la sección EVENTOS DETECTADOS                  #
+    # ------------------------------------------------------------------ #
+    # Eventos presentes en al menos 1 conversación, ordenados por frecuencia
+    global_events_sorted = sorted(
+        [
+            (ev, event_global_counts[ev])
+            for ev in event_global_counts
+            if event_global_counts[ev] > 0
+        ],
+        key=lambda x: -x[1],
+    )
 
     # ------------------------------------------------------------------ #
     # Recomendaciones generales                                            #
@@ -2226,16 +2435,22 @@ async def extract_guidelines(
             "Las guidelines propuestas cubren los escenarios residuales."
         )
 
-    if emotion_counts.get("Frustrado", 0) + emotion_counts.get("Molesto", 0) > total // 3:
+    if event_global_counts.get("user_frustration", 0) > total // 3:
         general_recs.append(
-            "Un tercio o más de los usuarios expresa frustración o molestia. "
+            "Un tercio o más de los usuarios expresa frustración. "
             "Implementar guidelines de escalamiento condicional mejorará la experiencia."
         )
 
-    if emotion_counts.get("Urgente", 0) > 0:
+    if event_global_counts.get("user_urgency", 0) > 0:
         general_recs.append(
             "Hay conversaciones con urgencia explícita. "
             "Asegúrate de que exista una guideline de priorización de urgencias."
+        )
+
+    if event_global_counts.get("unnecessary_escalation_risk", 0) > 0:
+        general_recs.append(
+            "Se detectaron escalamientos evitables. "
+            "La guideline de 'FIN repite solución ya agotada' es prioritaria."
         )
 
     if len(scored_patterns) > 3:
@@ -2298,6 +2513,18 @@ async def extract_guidelines(
     for line in summary_lines:
         result_parts.append(f"- {line}")
 
+    # Nueva sección: EVENTOS DETECTADOS
+    result_parts.append("\nEVENTOS DETECTADOS\n")
+    if global_events_sorted:
+        for ev_id, ev_count in global_events_sorted:
+            label = next(
+                (e["label"] for e in EVENT_CATALOG if e["id"] == ev_id),
+                ev_id,
+            )
+            result_parts.append(f"✓ {label} ({ev_count} de {total} conversaciones)")
+    else:
+        result_parts.append("No se detectaron eventos reconocibles.")
+
     result_parts.append("\nPATRONES DETECTADOS\n")
 
     if not scored_patterns:
@@ -2308,7 +2535,7 @@ async def extract_guidelines(
     else:
         for idx, pat in enumerate(scored_patterns, start=1):
             result_parts.append(f"Patrón #{idx}\n")
-            result_parts.append(f"Nombre\n\n{pat['problem'].replace('_', ' ').title()}")
+            result_parts.append(f"Nombre\n\n{pat['name']}")
             result_parts.append(
                 f"\nFrecuencia\n\n"
                 f"{pat['count']} de {total} conversaciones ({pat['frequency_pct']}%)"
@@ -2316,6 +2543,9 @@ async def extract_guidelines(
             result_parts.append(f"\nImpacto\n\n{pat['impact_label']}")
             result_parts.append(f"\nRiesgo\n\n{pat['risk']}")
             result_parts.append(f"\nGuideline propuesta\n\n{pat['guideline']}")
+            result_parts.append("\nJustificación (basada en eventos)\n")
+            for jev in pat["justification_events"]:
+                result_parts.append(f"- {jev}")
             result_parts.append(f"\nPrioridad\n\n{pat['priority']}")
             result_parts.append(
                 f"\nReducción estimada de escalamientos\n\n~{pat['esc_reduction']}%"
@@ -2332,7 +2562,7 @@ async def extract_guidelines(
     result_parts.append("\nPRIORIDAD DE IMPLEMENTACIÓN\n")
     for i, pat in enumerate(priority_order, start=1):
         result_parts.append(
-            f"{i}. [{pat['priority']}] {pat['problem'].replace('_', ' ').title()} "
+            f"{i}. [{pat['priority']}] {pat['name']} "
             f"— {pat['intention']} ({pat['frequency_pct']}%)"
         )
 
