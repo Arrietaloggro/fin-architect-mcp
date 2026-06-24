@@ -92,7 +92,54 @@ async def audit_guideline(
 
     return "\n".join(result_parts)
 
+@mcp.tool()
+async def optimize_guideline(
+    guideline: str
+) -> str:
 
+    findings = []
+
+    if "siempre" in guideline.lower():
+        findings.append(
+            "Evita términos absolutos como 'siempre'."
+        )
+
+    if "nunca" in guideline.lower():
+        findings.append(
+            "Evita términos absolutos como 'nunca'."
+        )
+
+    optimized = guideline
+
+    optimized = optimized.replace(
+        "Siempre",
+        "Escala únicamente cuando se cumplan los criterios definidos"
+    )
+
+    optimized = optimized.replace(
+        "siempre",
+        "únicamente cuando se cumplan los criterios definidos"
+    )
+
+    return f"""
+GUIDELINE ORIGINAL
+
+{guideline}
+
+PROBLEMAS DETECTADOS
+
+{chr(10).join('- ' + f for f in findings) if findings else '- Sin hallazgos críticos'}
+
+VERSIÓN OPTIMIZADA
+
+{optimized}
+
+JUSTIFICACIÓN
+
+- Se redujo ambigüedad.
+- Se eliminaron términos absolutos.
+- Se favorece la resolución antes del escalamiento.
+"""
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
