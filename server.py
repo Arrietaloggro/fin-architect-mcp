@@ -1522,6 +1522,396 @@ async def simulate_fin(
     return "\n".join(result_parts)
 
 
+@mcp.tool()
+async def generate_guideline(
+    conversation: str,
+    product: str = "general",
+    objective: str = "",
+    context: str = ""
+) -> str:
+    """
+    Analiza una conversación real entre un cliente y FIN y genera una nueva
+    guideline lista para incorporarse al repositorio de reglas. Detecta
+    intención, problema, emoción, punto de fallo, comportamiento esperado,
+    riesgos e impacto estimado.
+    """
+
+    text = conversation.lower()
+
+    # ------------------------------------------------------------------ #
+    # 1. Detectar intención principal                                      #
+    # ------------------------------------------------------------------ #
+    intention_map = [
+        ("Facturación",   ["factura", "cobro", "pago", "cargo", "reembolso", "cobrar", "facturar", "cufe"]),
+        ("Inventario",    ["inventario", "stock", "producto", "bodega", "existencia", "kardex"]),
+        ("Caja",          ["caja", "cierre de caja", "apertura de caja", "arqueo"]),
+        ("POS",           ["pos", "punto de venta", "terminal", "datafono"]),
+        ("Restobar",      ["restobar", "restaurante", "mesa", "pedido", "cocina", "comanda"]),
+        ("DIAN",          ["dian", "factura electrónica", "cufe", "resolución dian", "rut"]),
+        ("Nómina",        ["nómina", "empleado", "liquidación", "contrato", "devengado"]),
+        ("Reportes",      ["reporte", "informe", "exportar", "estadística", "dashboard"]),
+        ("Configuración", ["configuración", "configurar", "ajuste", "parámetro", "activar"]),
+        ("Error técnico", ["error", "fallo", "no funciona", "no carga", "bug", "problema técnico"]),
+        ("Acceso",        ["contraseña", "acceso", "usuario", "sesión", "login", "clave"]),
+        ("Seguridad",     ["seguridad", "fraude", "robo", "suplantación", "bloqueo"]),
+    ]
+
+    intention = "General"
+    intention_keywords_found = []
+    for label, keywords in intention_map:
+        hits = [k for k in keywords if k in text]
+        if hits:
+            intention = label
+            intention_keywords_found = hits
+            break
+
+    # ------------------------------------------------------------------ #
+    # 2. Detectar emoción                                                  #
+    # ------------------------------------------------------------------ #
+    if any(w in text for w in ["furioso", "harto", "pésimo", "terrible", "inaceptable", "no sirve"]):
+        emotion = "Frustrado"
+    elif any(w in text for w in ["molesto", "enojado", "fastidio", "mal servicio"]):
+        emotion = "Molesto"
+    elif any(w in text for w in ["urgente", "hoy mismo", "inmediatamente", "emergencia", "no puedo esperar"]):
+        emotion = "Urgente"
+    elif any(w in text for w in ["no entiendo", "no sé", "confundido", "cómo", "qué significa", "no comprendo"]):
+        emotion = "Confundido"
+    else:
+        emotion = "Neutral"
+
+    # ------------------------------------------------------------------ #
+    # 3. Detectar problema principal                                       #
+    # ------------------------------------------------------------------ #
+    problem_signals = {
+        "escalamiento sin criterios": [
+            "me pasaron con", "me transfirieron", "agente no supo",
+            "escalaron sin", "nadie me ayudó"
+        ],
+        "falta de resolución documentada": [
+            "no encuentro", "no hay artículo", "no existe documentación",
+            "no hay guía", "no encontré nada"
+        ],
+        "solución documentada insuficiente": [
+            "ya seguí los pasos", "seguí las instrucciones", "hice lo que dice",
+            "intenté lo del artículo", "el artículo no funciona"
+        ],
+        "respuesta genérica de FIN": [
+            "me dijo lo mismo", "misma respuesta", "respuesta repetida",
+            "no me ayuda", "respuesta automática"
+        ],
+        "fallo técnico sin guía": [
+            "error al", "no carga", "pantalla en blanco", "se traba",
+            "no responde", "caído"
+        ],
+        "urgencia no atendida": [
+            "hoy mismo", "urgente", "necesito ahora", "no puedo esperar",
+            "es crítico"
+        ],
+    }
+
+    detected_problems = []
+    for problem, signals in problem_signals.items():
+        if any(s in text for s in signals):
+            detected_problems.append(problem)
+
+    main_problem = detected_problems[0] if detected_problems else "comportamiento de FIN no definido para este escenario"
+
+    # ------------------------------------------------------------------ #
+    # 4. Detectar punto de fallo de FIN                                    #
+    # ------------------------------------------------------------------ #
+    failure_map = {
+        "escalamiento sin criterios":         "FIN escaló o puede escalar sin verificar si existe solución documentada.",
+        "falta de resolución documentada":    "FIN no cuenta con información suficiente para resolver el caso.",
+        "solución documentada insuficiente":  "FIN repitió una solución que el usuario ya intentó sin éxito.",
+        "respuesta genérica de FIN":          "FIN entregó una respuesta genérica que no resolvió el caso concreto.",
+        "fallo técnico sin guía":             "FIN no guió al usuario paso a paso ante un error técnico.",
+        "urgencia no atendida":               "FIN no priorizó ni aceleró la atención a pesar de la urgencia expresada.",
+        "comportamiento de FIN no definido para este escenario": "No se identificó un patrón de fallo claro. La guideline cubre el escenario preventivamente.",
+    }
+
+    failure_point = failure_map.get(main_problem, failure_map["comportamiento de FIN no definido para este escenario"])
+
+    # ------------------------------------------------------------------ #
+    # 5. Determinar comportamiento correcto de FIN                         #
+    # ------------------------------------------------------------------ #
+    behavior_map = {
+        "escalamiento sin criterios":
+            "FIN debe verificar la base de conocimiento antes de escalar. "
+            "Únicamente cuando no exista solución documentada o el usuario confirme haberla intentado sin éxito, FIN debe transferir al agente.",
+        "falta de resolución documentada":
+            "FIN debe indicar que no cuenta con una solución documentada para el caso "
+            "y transferir al agente con el contexto completo de la conversación.",
+        "solución documentada insuficiente":
+            "Si el usuario confirma haber seguido los pasos documentados sin resultado, "
+            "FIN no debe repetir la misma solución. Debe escalar con el detalle del intento fallido.",
+        "respuesta genérica de FIN":
+            "FIN debe identificar el escenario específico antes de responder "
+            "y adaptar la respuesta al contexto concreto del usuario.",
+        "fallo técnico sin guía":
+            "Ante un error técnico, FIN debe guiar paso a paso al usuario. "
+            "Si el error persiste tras los pasos documentados, debe escalar indicando el error exacto.",
+        "urgencia no atendida":
+            "Cuando el usuario exprese urgencia, FIN debe priorizar el caso, "
+            "acortar el proceso de verificación y escalar si no puede resolver de inmediato.",
+        "comportamiento de FIN no definido para este escenario":
+            "FIN debe verificar si existe solución para el caso, guiar al usuario "
+            "y escalar únicamente si la solución documentada no resuelve el problema.",
+    }
+
+    expected_behavior = behavior_map.get(main_problem, behavior_map["comportamiento de FIN no definido para este escenario"])
+
+    # ------------------------------------------------------------------ #
+    # 6. Construir la guideline                                            #
+    # ------------------------------------------------------------------ #
+    # Detectar si hay urgencia explícita
+    has_urgency    = emotion in ("Urgente",)
+    has_tried_docs = any(s in text for s in ["ya seguí", "seguí los pasos", "intenté", "ya hice", "el artículo"])
+    has_blockage   = any(w in text for w in ["no puedo", "bloqueado", "sin acceso", "no responde", "caído"])
+    has_escalation = any(w in text for w in ["escalar", "agente", "transferir", "transfiere"])
+
+    # Construir cláusulas de la guideline
+    clauses = []
+
+    if has_tried_docs:
+        clauses.append(
+            f"Si el usuario de {product} indica haber seguido los pasos documentados "
+            f"para resolver un caso de {intention} sin resultado exitoso"
+        )
+    elif has_urgency:
+        clauses.append(
+            f"Si el usuario de {product} expresa urgencia en un caso de {intention}"
+        )
+    elif has_blockage:
+        clauses.append(
+            f"Si el usuario de {product} se encuentra bloqueado operativamente en {intention}"
+        )
+    else:
+        clauses.append(
+            f"Cuando FIN reciba una consulta de {intention} en {product}"
+        )
+
+    if has_tried_docs:
+        clauses.append(
+            "verifica que el usuario confirme haber intentado la solución documentada"
+        )
+        clauses.append(
+            "y que el problema persista después de seguir los pasos indicados"
+        )
+        resolution_clause = (
+            "escala al agente humano incluyendo: el error exacto reportado, "
+            "los pasos que el usuario ya realizó y el resultado obtenido"
+        )
+    elif has_urgency:
+        clauses.append("prioriza el caso de inmediato")
+        resolution_clause = (
+            "y si no es posible resolver en la primera interacción, "
+            "escala al agente indicando la urgencia y el detalle del caso"
+        )
+    elif has_blockage:
+        clauses.append("verifica si existe una solución documentada en la base de conocimiento")
+        resolution_clause = (
+            "guía al usuario paso a paso; únicamente cuando la solución documentada "
+            "no resuelva el bloqueo, escala al agente con el contexto completo"
+        )
+    else:
+        clauses.append("verifica primero si existe solución documentada")
+        resolution_clause = (
+            "e intenta resolver de forma autónoma antes de escalar"
+        )
+
+    # Ensamblar guideline
+    if len(clauses) >= 3:
+        guideline_text = (
+            f"{clauses[0]}, {clauses[1]} {clauses[2]}: {resolution_clause}."
+        )
+    elif len(clauses) == 2:
+        guideline_text = f"{clauses[0]}, {clauses[1]}: {resolution_clause}."
+    else:
+        guideline_text = f"{clauses[0]}: {resolution_clause}."
+
+    # ------------------------------------------------------------------ #
+    # 7. Justificación                                                     #
+    # ------------------------------------------------------------------ #
+    justification_parts = [
+        f"La guideline cubre el escenario de '{intention}' donde {failure_point.lower()}",
+        "Evita que FIN repita soluciones ya intentadas, reduciendo la fricción con el cliente.",
+        "Establece condiciones claras sin términos absolutos, haciéndola mantenible y precisa.",
+    ]
+
+    if has_urgency:
+        justification_parts.append(
+            "Incorpora el criterio de urgencia como factor de priorización, mejorando la experiencia del cliente."
+        )
+
+    if has_tried_docs:
+        justification_parts.append(
+            "Exige que FIN transfiera contexto al agente (pasos realizados + resultado), "
+            "reduciendo el tiempo de resolución por el agente."
+        )
+
+    # ------------------------------------------------------------------ #
+    # 8. Riesgos                                                           #
+    # ------------------------------------------------------------------ #
+    risks = []
+
+    if has_escalation and not has_tried_docs:
+        risks.append(
+            "Si FIN no verifica correctamente si el usuario intentó la solución, "
+            "podría escalar casos que pueden resolverse de forma autónoma."
+        )
+
+    if has_urgency:
+        risks.append(
+            "La priorización por urgencia podría saturar al agente si muchos usuarios "
+            "expresan urgencia sin que el caso sea crítico."
+        )
+
+    if len(detected_problems) > 1:
+        risks.append(
+            f"Se detectaron múltiples problemas en la conversación ({', '.join(detected_problems)}). "
+            "Esta guideline cubre el principal; considera crear guidelines adicionales para los demás."
+        )
+
+    if not risks:
+        risks.append(
+            "No se identificaron riesgos mayores. "
+            "Valida la guideline contra conversaciones reales antes de publicar."
+        )
+
+    # ------------------------------------------------------------------ #
+    # 9. Calcular métricas de impacto                                      #
+    # ------------------------------------------------------------------ #
+    # Base de reducción de escalamientos
+    escalation_reduction_base = 20
+
+    if has_tried_docs:
+        escalation_reduction_base += 25   # evita re-escalar por docs ya intentados
+    if has_urgency:
+        escalation_reduction_base += 10   # priorización reduce escalamientos de pánico
+    if main_problem == "escalamiento sin criterios":
+        escalation_reduction_base += 20
+    if main_problem == "respuesta genérica de FIN":
+        escalation_reduction_base += 10
+    if len(detected_problems) > 2:
+        escalation_reduction_base -= 10   # escenario complejo, impacto más incierto
+
+    escalation_reduction = min(escalation_reduction_base, 75)
+
+    # Base de mejora en resolución autónoma
+    autonomous_base = 15
+
+    if main_problem in ("falta de resolución documentada", "solución documentada insuficiente"):
+        autonomous_base += 20
+    if main_problem == "fallo técnico sin guía":
+        autonomous_base += 25
+    if has_blockage and not has_tried_docs:
+        autonomous_base += 15
+    if emotion in ("Confundido",):
+        autonomous_base += 10
+    if has_escalation and not has_tried_docs:
+        autonomous_base -= 5   # el camino de escalamiento puede seguir siendo necesario
+
+    autonomous_improvement = min(autonomous_base, 70)
+
+    # ------------------------------------------------------------------ #
+    # 10. Impacto esperado y prioridad                                     #
+    # ------------------------------------------------------------------ #
+    total_impact_score = escalation_reduction + autonomous_improvement
+
+    if total_impact_score >= 80:
+        impact = "Alto"
+    elif total_impact_score >= 50:
+        impact = "Medio"
+    else:
+        impact = "Bajo"
+
+    if emotion in ("Frustrado",) or main_problem == "escalamiento sin criterios" or has_blockage:
+        implementation_priority = "Crítica"
+    elif emotion in ("Urgente", "Molesto") or impact == "Alto":
+        implementation_priority = "Alta"
+    elif impact == "Medio":
+        implementation_priority = "Media"
+    else:
+        implementation_priority = "Baja"
+
+    # ------------------------------------------------------------------ #
+    # Observaciones finales                                                #
+    # ------------------------------------------------------------------ #
+    observations = []
+
+    if objective:
+        observations.append(
+            f"La guideline fue construida teniendo en cuenta el objetivo declarado: '{objective}'."
+        )
+
+    observations.append(
+        "Valida esta guideline con audit_guideline y score_guideline antes de incorporarla al repositorio."
+    )
+
+    if len(detected_problems) > 1:
+        observations.append(
+            f"Considera generar guidelines adicionales para los otros problemas detectados: "
+            f"{', '.join(detected_problems[1:])}."
+        )
+
+    if implementation_priority in ("Crítica", "Alta"):
+        observations.append(
+            "Por la prioridad asignada, se recomienda incorporar esta guideline antes del próximo despliegue de FIN."
+        )
+
+    # ------------------------------------------------------------------ #
+    # Construcción de la respuesta                                         #
+    # ------------------------------------------------------------------ #
+    result_parts = [
+        f"**Generación de Guideline — Producto: {product.upper()}**\n"
+    ]
+
+    result_parts.append(
+        f"**Conversación analizada:**\n> {conversation}\n"
+    )
+
+    if context:
+        result_parts.append(f"**Contexto:** {context}\n")
+
+    result_parts.append("GENERACIÓN DE GUIDELINE")
+
+    result_parts.append(f"\nPRODUCTO\n\n{product.upper()}")
+
+    result_parts.append(f"\nINTENCIÓN DETECTADA\n\n{intention}")
+
+    result_parts.append(f"\nPROBLEMA OBSERVADO\n\n{failure_point}")
+
+    result_parts.append(f"\nCOMPORTAMIENTO ESPERADO\n\n{expected_behavior}")
+
+    result_parts.append(f"\nGUIDELINE PROPUESTA\n\n{guideline_text}")
+
+    result_parts.append("\nJUSTIFICACIÓN\n")
+    for j in justification_parts:
+        result_parts.append(f"- {j}")
+
+    result_parts.append("\nRIESGOS\n")
+    for r in risks:
+        result_parts.append(f"- {r}")
+
+    result_parts.append(f"\nIMPACTO ESPERADO\n\n{impact}")
+
+    result_parts.append(
+        f"\nREDUCCIÓN ESTIMADA DE ESCALAMIENTOS\n\n~{escalation_reduction}%"
+    )
+
+    result_parts.append(
+        f"\nMEJORA ESTIMADA EN RESOLUCIÓN AUTÓNOMA\n\n~{autonomous_improvement}%"
+    )
+
+    result_parts.append(f"\nPRIORIDAD\n\n{implementation_priority}")
+
+    result_parts.append("\nOBSERVACIONES\n")
+    for o in observations:
+        result_parts.append(f"- {o}")
+
+    return "\n".join(result_parts)
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
