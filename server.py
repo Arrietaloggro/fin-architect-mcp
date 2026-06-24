@@ -655,6 +655,500 @@ async def detect_conflicts(
     return "\n".join(result_parts)
 
 
+@mcp.tool()
+async def score_guideline(
+    guideline: str,
+    product: str = "general",
+    context: str = ""
+) -> str:
+    """
+    Evalúa la calidad de una guideline de FIN y devuelve una puntuación
+    sobre 100 con desglose por criterio, fortalezas, debilidades,
+    riesgo, justificación y recomendación de mejora.
+    """
+
+    text = guideline.lower()
+    word_count = len(guideline.split())
+
+    strengths = []
+    weaknesses = []
+
+    # ------------------------------------------------------------------ #
+    # 1. Claridad (10 pts)                                                 #
+    # ------------------------------------------------------------------ #
+    clarity = 10
+
+    vague_phrases = [
+        "de alguna manera",
+        "como sea posible",
+        "en la medida",
+        "según corresponda",
+        "a discreción",
+        "dependiendo",
+        "podría",
+        "quizás",
+        "tal vez",
+    ]
+
+    vague_hits = [p for p in vague_phrases if p in text]
+
+    if vague_hits:
+        clarity -= min(len(vague_hits) * 2, 6)
+        weaknesses.append(
+            f"Claridad reducida por frases vagas: {', '.join(repr(p) for p in vague_hits)}."
+        )
+
+    if len(guideline.strip()) < 20:
+        clarity -= 4
+        weaknesses.append("La guideline es demasiado corta para transmitir una instrucción clara.")
+
+    if clarity == 10:
+        strengths.append("Redacción clara, sin frases ambiguas detectadas.")
+
+    clarity = max(clarity, 0)
+
+    # ------------------------------------------------------------------ #
+    # 2. Accionabilidad (10 pts)                                           #
+    # ------------------------------------------------------------------ #
+    actionability = 10
+
+    action_verbs = [
+        "escala", "escalar", "responde", "responder", "informa", "informar",
+        "ofrece", "ofrecer", "solicita", "solicitar", "verifica", "verificar",
+        "confirma", "confirmar", "transfiere", "transferir", "resuelve",
+        "resolver", "indica", "indicar", "explica", "explicar",
+    ]
+
+    has_action_verb = any(v in text for v in action_verbs)
+
+    if not has_action_verb:
+        actionability -= 6
+        weaknesses.append(
+            "No se detectó ningún verbo de acción claro. FIN puede no saber qué hacer."
+        )
+    else:
+        strengths.append("Contiene verbos de acción que orientan el comportamiento de FIN.")
+
+    if "si " not in text and "cuando " not in text and "solo si" not in text:
+        actionability -= 3
+        weaknesses.append(
+            "Sin condiciones explícitas ('si', 'cuando'). La acción puede ejecutarse en cualquier contexto."
+        )
+
+    actionability = max(actionability, 0)
+
+    # ------------------------------------------------------------------ #
+    # 3. Ambigüedad (15 pts)                                               #
+    # ------------------------------------------------------------------ #
+    ambiguity = 15
+
+    ambiguous_terms = [
+        "siempre",
+        "nunca",
+        "normalmente",
+        "generalmente",
+        "etc",
+        "si es posible",
+        "rápidamente",
+        "cuando sea necesario",
+        "lo antes posible",
+        "en lo posible",
+        "suele",
+        "a veces",
+        "casi siempre",
+    ]
+
+    ambiguous_hits = [t for t in ambiguous_terms if t in text]
+
+    if ambiguous_hits:
+        penalty = min(len(ambiguous_hits) * 3, 12)
+        ambiguity -= penalty
+        weaknesses.append(
+            f"Términos ambiguos o absolutos: {', '.join(repr(t) for t in ambiguous_hits)}."
+        )
+    else:
+        strengths.append("No contiene términos absolutos ni ambiguos.")
+
+    ambiguity = max(ambiguity, 0)
+
+    # ------------------------------------------------------------------ #
+    # 4. Criterios de escalamiento (15 pts)                                #
+    # ------------------------------------------------------------------ #
+    escalation_score = 15
+
+    escalation_words = [
+        "escalar", "escala", "transferir", "transfiere", "agente humano", "agente"
+    ]
+
+    mentions_escalation = any(w in text for w in escalation_words)
+
+    if mentions_escalation:
+        has_condition = (
+            "cuando " in text
+            or "si " in text
+            or "solo si" in text
+            or "en caso de" in text
+        )
+        unconditional = any(
+            w in text for w in ["siempre escala", "siempre escalar", "debe escalar siempre"]
+        )
+
+        if unconditional:
+            escalation_score -= 10
+            weaknesses.append(
+                "Escalamiento incondicional ('siempre escala'). FIN escalará sin evaluar el contexto."
+            )
+        elif not has_condition:
+            escalation_score -= 6
+            weaknesses.append(
+                "Se menciona escalamiento sin definir condición explícita ('cuando', 'si', 'solo si')."
+            )
+        else:
+            strengths.append("El escalamiento está condicionado a criterios explícitos.")
+    else:
+        strengths.append("No requiere escalamiento; favorece la resolución autónoma.")
+
+    escalation_score = max(escalation_score, 0)
+
+    # ------------------------------------------------------------------ #
+    # 5. Especificidad (10 pts)                                            #
+    # ------------------------------------------------------------------ #
+    specificity = 10
+
+    specific_signals = [
+        "factura", "cobro", "pago", "contraseña", "cuenta", "acceso",
+        "error", "plan", "contrato", "módulo", "reporte", "usuario",
+        "primera vez", "reincidente", "bloqueo", "cargo",
+    ]
+
+    specific_hits = [s for s in specific_signals if s in text]
+
+    if not specific_hits:
+        specificity -= 5
+        weaknesses.append(
+            "No menciona escenarios, entidades o situaciones concretas."
+        )
+    elif len(specific_hits) >= 2:
+        strengths.append(
+            f"Alta especificidad: menciona contextos concretos ({', '.join(specific_hits[:3])})."
+        )
+
+    if "cualquier" in text or "todo" in text or "siempre" in text:
+        specificity -= 3
+        weaknesses.append(
+            "El uso de 'cualquier', 'todo' o 'siempre' reduce la especificidad de la regla."
+        )
+
+    specificity = max(specificity, 0)
+
+    # ------------------------------------------------------------------ #
+    # 6. Consistencia interna (10 pts)                                     #
+    # ------------------------------------------------------------------ #
+    consistency = 10
+
+    contradictions = [
+        ("escalar", "no escalar"),
+        ("siempre", "solo si"),
+        ("transfiere", "no transfieras"),
+        ("informa", "no informes"),
+    ]
+
+    internal_contradiction = False
+
+    for affirm, deny in contradictions:
+        if affirm in text and deny in text:
+            internal_contradiction = True
+
+    if internal_contradiction:
+        consistency -= 8
+        weaknesses.append(
+            "La guideline contiene instrucciones contradictorias internamente."
+        )
+    else:
+        strengths.append("No se detectaron contradicciones internas.")
+
+    consistency = max(consistency, 0)
+
+    # ------------------------------------------------------------------ #
+    # 7. Mantenibilidad (10 pts)                                           #
+    # ------------------------------------------------------------------ #
+    maintainability = 10
+
+    if word_count > 80:
+        maintainability -= 5
+        weaknesses.append(
+            f"La guideline es extensa ({word_count} palabras). Difícil de mantener y actualizar."
+        )
+    elif word_count > 50:
+        maintainability -= 2
+        weaknesses.append(
+            f"La guideline supera las 50 palabras ({word_count}). Considera dividirla."
+        )
+    else:
+        strengths.append("Longitud manejable; fácil de mantener.")
+
+    nested_conditions = text.count(" si ") + text.count(" cuando ") + text.count(" excepto ")
+
+    if nested_conditions >= 3:
+        maintainability -= 3
+        weaknesses.append(
+            "Múltiples condiciones anidadas aumentan la complejidad de mantenimiento."
+        )
+
+    maintainability = max(maintainability, 0)
+
+    # ------------------------------------------------------------------ #
+    # 8. Longitud adecuada (5 pts)                                         #
+    # ------------------------------------------------------------------ #
+    length_score = 5
+
+    if word_count < 5:
+        length_score -= 4
+        weaknesses.append("Demasiado corta (menos de 5 palabras). No es accionable.")
+    elif word_count < 10:
+        length_score -= 2
+        weaknesses.append("Muy corta. Puede carecer de contexto suficiente.")
+    elif word_count > 100:
+        length_score -= 3
+        weaknesses.append(
+            f"Demasiado extensa ({word_count} palabras). Considera fragmentarla en reglas atómicas."
+        )
+
+    length_score = max(length_score, 0)
+
+    # ------------------------------------------------------------------ #
+    # 9. Seguridad operativa (10 pts)                                      #
+    # ------------------------------------------------------------------ #
+    security = 10
+
+    risky_patterns = [
+        "comparte la contraseña",
+        "da acceso",
+        "otorga permiso",
+        "sin verificar",
+        "sin validar",
+        "sin confirmar identidad",
+        "sin autenticar",
+        "proporciona datos personales",
+        "envía el número de tarjeta",
+    ]
+
+    risky_hits = [r for r in risky_patterns if r in text]
+
+    open_ended = (
+        "cualquier solicitud" in text
+        or "todo lo que pida" in text
+        or "sin restricción" in text
+        or "sin límite" in text
+    )
+
+    if risky_hits:
+        security -= min(len(risky_hits) * 4, 8)
+        weaknesses.append(
+            f"Patrones de riesgo operativo: {', '.join(repr(r) for r in risky_hits)}."
+        )
+    if open_ended:
+        security -= 4
+        weaknesses.append(
+            "Instrucción demasiado abierta. Puede habilitar acciones no previstas."
+        )
+
+    if security == 10:
+        strengths.append("Sin patrones de riesgo operativo detectados.")
+
+    security = max(security, 0)
+
+    # ------------------------------------------------------------------ #
+    # 10. Experiencia del usuario (5 pts)                                  #
+    # ------------------------------------------------------------------ #
+    ux = 5
+
+    resolve_first = any(
+        w in text for w in [
+            "intenta resolver",
+            "resolver primero",
+            "antes de escalar",
+            "resolución autónoma",
+            "base de conocimiento",
+            "solucionar",
+        ]
+    )
+
+    if resolve_first:
+        strengths.append("Favorece la resolución autónoma antes de escalar.")
+    else:
+        ux -= 3
+        weaknesses.append(
+            "No indica explícitamente que FIN debe intentar resolver antes de escalar."
+        )
+
+    empathy_signals = [
+        "disculpa", "lamentamos", "entendemos", "comprendo",
+        "te ayudo", "con gusto", "con placer",
+    ]
+
+    if any(e in text for e in empathy_signals):
+        strengths.append("Incluye señales de empatía hacia el cliente.")
+    else:
+        ux -= 1
+
+    ux = max(ux, 0)
+
+    # ------------------------------------------------------------------ #
+    # Score final                                                          #
+    # ------------------------------------------------------------------ #
+    total = (
+        clarity
+        + actionability
+        + ambiguity
+        + escalation_score
+        + specificity
+        + consistency
+        + maintainability
+        + length_score
+        + security
+        + ux
+    )
+
+    # Nivel de riesgo
+    if total >= 85:
+        risk = "BAJO"
+    elif total >= 60:
+        risk = "MEDIO"
+    else:
+        risk = "ALTO"
+
+    # Interpretación
+    if total >= 95:
+        interpretation = "Excelente. Lista para producción."
+    elif total >= 85:
+        interpretation = "Muy buena. Solo requiere ajustes menores."
+    elif total >= 70:
+        interpretation = "Aceptable. Se recomienda revisión antes de publicar."
+    elif total >= 50:
+        interpretation = "Riesgo medio. Debe optimizarse antes de publicarse."
+    else:
+        interpretation = "No recomendada para producción. Requiere reescritura."
+
+    # Justificación
+    justification_parts = []
+
+    if total >= 85:
+        justification_parts.append(
+            "La guideline es sólida: instrucción clara, condicionada y sin ambigüedades mayores."
+        )
+    elif total >= 70:
+        justification_parts.append(
+            "La guideline es funcional pero presenta áreas de mejora en claridad o especificidad."
+        )
+    else:
+        justification_parts.append(
+            "La guideline tiene deficiencias estructurales que pueden generar comportamiento impredecible en FIN."
+        )
+
+    if ambiguous_hits:
+        justification_parts.append(
+            f"Los términos {', '.join(repr(t) for t in ambiguous_hits)} reducen la precisión de la instrucción."
+        )
+
+    if product != "general":
+        justification_parts.append(
+            f"Evaluada en el contexto del producto '{product}'. "
+            "Verifica que no colisione con reglas globales."
+        )
+
+    # Recomendación
+    recommendation_parts = []
+
+    if ambiguous_hits:
+        recommendation_parts.append(
+            f"Reemplaza {', '.join(repr(t) for t in ambiguous_hits)} por condiciones concretas y verificables."
+        )
+
+    if not has_action_verb:
+        recommendation_parts.append(
+            "Añade un verbo de acción explícito (escala, responde, informa, verifica, etc.)."
+        )
+
+    if mentions_escalation and not has_condition:
+        recommendation_parts.append(
+            "Define una condición clara para el escalamiento: 'solo si…', 'cuando…', 'en caso de…'."
+        )
+
+    if not resolve_first and mentions_escalation:
+        recommendation_parts.append(
+            "Añade una cláusula que indique intentar resolver antes de escalar."
+        )
+
+    if word_count > 80:
+        recommendation_parts.append(
+            "Divide la guideline en reglas más atómicas de una sola responsabilidad."
+        )
+
+    if not recommendation_parts:
+        recommendation_parts.append(
+            "Mantén esta guideline como referencia de calidad para el resto del conjunto."
+        )
+
+    # Formato del desglose alineado
+    def row(label, score, max_score):
+        dots = "." * max(1, 20 - len(label))
+        return f"{label} {dots} {score}/{max_score}"
+
+    breakdown_rows = [
+        row("Claridad", clarity, 10),
+        row("Accionabilidad", actionability, 10),
+        row("Ambigüedad", ambiguity, 15),
+        row("Escalamiento", escalation_score, 15),
+        row("Especificidad", specificity, 10),
+        row("Consistencia", consistency, 10),
+        row("Mantenibilidad", maintainability, 10),
+        row("Longitud", length_score, 5),
+        row("Seguridad", security, 10),
+        row("Experiencia Usuario", ux, 5),
+    ]
+
+    result_parts = [
+        f"**Score de Guideline — Producto: {product.upper()}**\n"
+    ]
+
+    result_parts.append(
+        f"**Guideline evaluada:**\n> {guideline}\n"
+    )
+
+    if context:
+        result_parts.append(f"**Contexto:** {context}\n")
+
+    result_parts.append(f"SCORE GENERAL\n\n{total}/100")
+
+    result_parts.append("\nDESGLOSE\n")
+    result_parts.extend(breakdown_rows)
+
+    if strengths:
+        result_parts.append("\nFORTALEZAS\n")
+        for s in strengths:
+            result_parts.append(f"- {s}")
+
+    if weaknesses:
+        result_parts.append("\nDEBILIDADES\n")
+        for w in weaknesses:
+            result_parts.append(f"- {w}")
+
+    result_parts.append(f"\nRIESGO\n\n{risk}")
+
+    result_parts.append("\nJUSTIFICACIÓN\n")
+    for j in justification_parts:
+        result_parts.append(f"- {j}")
+
+    result_parts.append("\nRECOMENDACIÓN\n")
+    for r in recommendation_parts:
+        result_parts.append(f"- {r}")
+
+    result_parts.append(f"\nINTERPRETACIÓN\n\n{total}/100 — {interpretation}")
+
+    return "\n".join(result_parts)
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
