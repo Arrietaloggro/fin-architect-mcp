@@ -1,3 +1,4 @@
+```python
 from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
@@ -25,7 +26,6 @@ async def audit_guideline(
     issues = []
     suggestions = []
 
-    # Validaciones básicas
     if len(guideline.strip()) < 20:
         issues.append(
             "La guideline es demasiado corta para ser accionable."
@@ -92,34 +92,123 @@ async def audit_guideline(
 
     return "\n".join(result_parts)
 
+
 @mcp.tool()
 async def optimize_guideline(
     guideline: str
 ) -> str:
 
+    text = guideline.lower()
+
     findings = []
+    risk_score = 0
 
-    if "siempre" in guideline.lower():
+    # Detectar términos absolutos
+    absolute_words = [
+        "siempre",
+        "nunca",
+        "todos",
+        "ninguno",
+        "cualquier"
+    ]
+
+    for word in absolute_words:
+        if word in text:
+            findings.append(
+                f"Término absoluto detectado: '{word}'."
+            )
+            risk_score += 2
+
+    # Detectar ambigüedad
+    ambiguous_words = [
+        "error",
+        "problema",
+        "consulta",
+        "caso",
+        "solicitud"
+    ]
+
+    for word in ambiguous_words:
+        if word in text:
+            findings.append(
+                f"Término ambiguo detectado: '{word}'. Requiere mayor precisión."
+            )
+            risk_score += 1
+
+    # Detectar escalamiento
+    escalation_words = [
+        "escalar",
+        "escala",
+        "transferir",
+        "transfiere",
+        "agente",
+        "agente humano"
+    ]
+
+    escalation_detected = False
+
+    for word in escalation_words:
+        if word in text:
+            escalation_detected = True
+
+    if escalation_detected:
+
         findings.append(
-            "Evita términos absolutos como 'siempre'."
+            "La pauta contiene instrucciones de escalamiento."
         )
 
-    if "nunca" in guideline.lower():
+        risk_score += 2
+
+        if (
+            "cuando" not in text
+            and "si " not in text
+            and "solo si" not in text
+        ):
+            findings.append(
+                "No se identificaron criterios claros para escalar."
+            )
+
+            risk_score += 3
+
+    # Detectar frustración
+    if (
+        "frustración" in text
+        or "frustrado" in text
+        or "molesto" in text
+        or "enojado" in text
+    ):
+
         findings.append(
-            "Evita términos absolutos como 'nunca'."
+            "La pauta involucra emociones del cliente. Se recomienda intentar resolver antes de escalar."
         )
 
+        risk_score += 1
+
+    # Calcular riesgo
+    if risk_score >= 7:
+        risk = "ALTO"
+    elif risk_score >= 4:
+        risk = "MEDIO"
+    else:
+        risk = "BAJO"
+
+    # Generar versión optimizada
     optimized = guideline
 
-    optimized = optimized.replace(
-        "Siempre",
-        "Escala únicamente cuando se cumplan los criterios definidos"
-    )
+    replacements = {
+        "Siempre": "Escala únicamente cuando se cumplan los criterios definidos",
+        "siempre": "únicamente cuando se cumplan los criterios definidos",
+        "Nunca": "Excepto en los casos definidos",
+        "nunca": "excepto en los casos definidos",
+        "cualquier": "las situaciones que cumplan los criterios definidos"
+    }
 
-    optimized = optimized.replace(
-        "siempre",
-        "únicamente cuando se cumplan los criterios definidos"
-    )
+    for old, new in replacements.items():
+        optimized = optimized.replace(old, new)
+
+    recommendation = """
+Escala únicamente cuando exista bloqueo operativo, no haya solución documentada, el cliente haya seguido los pasos sugeridos sin éxito o solicite explícitamente atención humana. Prioriza la resolución autónoma antes de transferir el caso.
+"""
 
     return f"""
 GUIDELINE ORIGINAL
@@ -128,18 +217,29 @@ GUIDELINE ORIGINAL
 
 PROBLEMAS DETECTADOS
 
-{chr(10).join('- ' + f for f in findings) if findings else '- Sin hallazgos críticos'}
+{chr(10).join('- ' + f for f in findings) if findings else '- No se detectaron problemas relevantes'}
+
+NIVEL DE RIESGO
+
+{risk}
 
 VERSIÓN OPTIMIZADA
 
 {optimized}
 
+RECOMENDACIÓN FIN
+
+{recommendation}
+
 JUSTIFICACIÓN
 
-- Se redujo ambigüedad.
-- Se eliminaron términos absolutos.
-- Se favorece la resolución antes del escalamiento.
+- Reduce ambigüedad.
+- Evita escalamientos innecesarios.
+- Define criterios más objetivos.
+- Favorece la resolución autónoma.
 """
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
@@ -185,3 +285,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port
     )
+```
