@@ -3,6 +3,7 @@ from mcp.server.sse import SseServerTransport
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 import uvicorn
 import os
 
@@ -19,20 +20,24 @@ async def audit_guideline(
     """
     Audita una guideline de FIN para detectar ambigüedades,
     conflictos o mejoras recomendadas.
-
-    Args:
-        guideline: Texto de la guideline a auditar.
-        product: Producto Loggro (restobar, facturacion, inventario, alojamiento, general).
-        context: Contexto adicional del caso de uso.
     """
+
     issues = []
     suggestions = []
 
     # Validaciones básicas
     if len(guideline.strip()) < 20:
-        issues.append("La guideline es demasiado corta para ser accionable.")
+        issues.append(
+            "La guideline es demasiado corta para ser accionable."
+        )
 
-    keywords_ambiguous = ["siempre", "nunca", "todos", "ninguno"]
+    keywords_ambiguous = [
+        "siempre",
+        "nunca",
+        "todos",
+        "ninguno"
+    ]
+
     for word in keywords_ambiguous:
         if word in guideline.lower():
             issues.append(
@@ -63,19 +68,23 @@ async def audit_guideline(
     )
 
     if context:
-        result_parts.append(f"**Contexto:** {context}\n")
+        result_parts.append(
+            f"**Contexto:** {context}\n"
+        )
 
     if issues:
         result_parts.append("**⚠️ Problemas detectados:**")
-        for i in issues:
-            result_parts.append(f"- {i}")
+        for issue in issues:
+            result_parts.append(f"- {issue}")
     else:
-        result_parts.append("**✅ Sin problemas críticos detectados.**")
+        result_parts.append(
+            "**✅ Sin problemas críticos detectados.**"
+        )
 
     if suggestions:
         result_parts.append("\n**💡 Sugerencias:**")
-        for s in suggestions:
-            result_parts.append(f"- {s}")
+        for suggestion in suggestions:
+            result_parts.append(f"- {suggestion}")
 
     result_parts.append(
         "\n**Recomendación:** Valida esta guideline contra conversaciones reales en Intercom antes de publicar."
@@ -94,6 +103,7 @@ async def handle_sse(request: Request):
         request.receive,
         request._send
     ) as streams:
+
         await mcp._mcp_server.run(
             streams[0],
             streams[1],
@@ -101,8 +111,19 @@ async def handle_sse(request: Request):
         )
 
 
+# Healthcheck para Railway
+async def health(request):
+    return JSONResponse(
+        {
+            "status": "ok",
+            "service": "fin-architect-mcp"
+        }
+    )
+
+
 app = Starlette(
     routes=[
+        Route("/", endpoint=health),
         Route("/sse", endpoint=handle_sse),
         Mount("/messages/", app=sse.handle_post_message),
     ]
@@ -111,6 +132,7 @@ app = Starlette(
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
+
     uvicorn.run(
         app,
         host="0.0.0.0",
