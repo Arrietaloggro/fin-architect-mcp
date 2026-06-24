@@ -379,6 +379,282 @@ async def classify_guideline(
     return "\n".join(result_parts)
 
 
+@mcp.tool()
+async def detect_conflicts(
+    guidelines: list,
+    product: str = "general",
+    context: str = ""
+) -> str:
+    """
+    Analiza un conjunto de guidelines de FIN y detecta conflictos entre ellas:
+    escalamiento contradictorio, acciones prohibidas vs obligadas, condiciones
+    incompatibles, prioridades distintas para el mismo escenario, respuestas
+    contradictorias, duplicados y conflictos global vs producto.
+    """
+
+    conflicts = []
+    severity_score = 0
+
+    texts = [g.lower() for g in guidelines]
+
+    escalation_words = ["escalar", "escala", "transferir", "transfiere", "agente humano"]
+    resolve_words = ["resolver", "intenta resolver", "resuelve", "solucionar", "soluciona"]
+    prohibition_words = ["no escalar", "no transferir", "no escales", "nunca escalar", "no ofrecer"]
+    obligation_words = ["siempre escalar", "debe escalar", "escalar siempre", "siempre transferir"]
+    priority_words = ["urgente", "alta prioridad", "prioridad alta", "prioridad baja", "baja prioridad", "normal"]
+
+    escalation_indices = [
+        i for i, t in enumerate(texts)
+        if any(w in t for w in escalation_words)
+    ]
+
+    resolve_indices = [
+        i for i, t in enumerate(texts)
+        if any(w in t for w in resolve_words)
+    ]
+
+    # Conflicto 1: escalar siempre vs resolver primero
+    absolute_escalation = [
+        i for i in escalation_indices
+        if any(w in texts[i] for w in ["siempre", "siempre escalar", "debe escalar"])
+        and "cuando" not in texts[i]
+        and "si " not in texts[i]
+    ]
+
+    conditional_resolve = [
+        i for i in resolve_indices
+        if "antes" in texts[i] or "primero" in texts[i] or "intentar" in texts[i]
+    ]
+
+    for i in absolute_escalation:
+        for j in conditional_resolve:
+            conflicts.append(
+                f"Guideline {i + 1} ordena escalar sin condiciones, "
+                f"pero guideline {j + 1} indica intentar resolver antes de escalar."
+            )
+            severity_score += 4
+
+    # Conflicto 2: acción prohibida vs obligada
+    prohibition_indices = [
+        i for i, t in enumerate(texts)
+        if any(w in t for w in prohibition_words)
+    ]
+
+    obligation_indices = [
+        i for i, t in enumerate(texts)
+        if any(w in t for w in obligation_words)
+    ]
+
+    for i in prohibition_indices:
+        for j in obligation_indices:
+            if i != j:
+                conflicts.append(
+                    f"Guideline {i + 1} prohíbe una acción que guideline {j + 1} obliga a realizar."
+                )
+                severity_score += 5
+
+    # Conflicto 3: condiciones incompatibles
+    condition_pairs = [
+        ("frustración", "molesto"),
+        ("primera vez", "reincidente"),
+        ("plan básico", "plan premium"),
+        ("sin contrato", "con contrato"),
+    ]
+
+    for word_a, word_b in condition_pairs:
+        indices_a = [i for i, t in enumerate(texts) if word_a in t]
+        indices_b = [i for i, t in enumerate(texts) if word_b in t]
+        for i in indices_a:
+            for j in indices_b:
+                if i != j:
+                    conflicts.append(
+                        f"Guideline {i + 1} aplica a '{word_a}' y guideline {j + 1} "
+                        f"aplica a '{word_b}': condiciones potencialmente incompatibles o solapadas."
+                    )
+                    severity_score += 2
+
+    # Conflicto 4: diferentes prioridades para el mismo escenario
+    shared_scenarios = [
+        "factura", "cobro", "pago", "error", "acceso", "contraseña", "cuenta"
+    ]
+
+    for scenario in shared_scenarios:
+        indices_with_scenario = [i for i, t in enumerate(texts) if scenario in t]
+        if len(indices_with_scenario) >= 2:
+            priorities_found = set()
+            for i in indices_with_scenario:
+                for pw in priority_words:
+                    if pw in texts[i]:
+                        priorities_found.add(pw)
+            if len(priorities_found) >= 2:
+                involved = ", ".join(
+                    str(i + 1) for i in indices_with_scenario
+                )
+                conflicts.append(
+                    f"Guidelines {involved} abordan el escenario '{scenario}' "
+                    f"con prioridades distintas: {', '.join(priorities_found)}."
+                )
+                severity_score += 3
+
+    # Conflicto 5: respuestas contradictorias para el mismo caso
+    contradiction_pairs = [
+        ("disculpa", "no disculpa"),
+        ("ofrece descuento", "no ofrece descuento"),
+        ("confirma el error", "niega el error"),
+        ("da el número de caso", "no compartas el número"),
+    ]
+
+    for affirm, deny in contradiction_pairs:
+        indices_affirm = [i for i, t in enumerate(texts) if affirm in t]
+        indices_deny = [i for i, t in enumerate(texts) if deny in t]
+        for i in indices_affirm:
+            for j in indices_deny:
+                if i != j:
+                    conflicts.append(
+                        f"Guideline {i + 1} indica '{affirm}', "
+                        f"pero guideline {j + 1} indica '{deny}': respuestas contradictorias."
+                    )
+                    severity_score += 4
+
+    # Conflicto 6: duplicados o casi idénticos
+    for i in range(len(guidelines)):
+        for j in range(i + 1, len(guidelines)):
+            words_i = set(texts[i].split())
+            words_j = set(texts[j].split())
+            if not words_i or not words_j:
+                continue
+            overlap = len(words_i & words_j) / max(len(words_i), len(words_j))
+            if overlap >= 0.8:
+                conflicts.append(
+                    f"Guidelines {i + 1} y {j + 1} son casi idénticas "
+                    f"({int(overlap * 100)}% de palabras en común). Posible duplicado."
+                )
+                severity_score += 2
+
+    # Conflicto 7: regla global vs regla específica del producto
+    if product != "general":
+        global_indices = [
+            i for i, t in enumerate(texts)
+            if "todos los productos" in t
+            or "en general" in t
+            or "por defecto" in t
+        ]
+        specific_indices = [
+            i for i, t in enumerate(texts)
+            if product.lower() in t
+        ]
+        for i in global_indices:
+            for j in specific_indices:
+                if i != j:
+                    conflicts.append(
+                        f"Guideline {i + 1} define una regla global que puede colisionar "
+                        f"con la regla específica del producto '{product}' en guideline {j + 1}."
+                    )
+                    severity_score += 3
+
+    # Calcular severidad
+    if severity_score >= 10:
+        severidad = "ALTA"
+    elif severity_score >= 4:
+        severidad = "MEDIA"
+    else:
+        severidad = "BAJA"
+
+    # Construir riesgo
+    if severidad == "ALTA":
+        riesgo = (
+            "FIN puede comportarse de forma impredecible: escalar cuando no debe, "
+            "contradecir respuestas anteriores o generar experiencias inconsistentes "
+            "para el cliente. Requiere resolución inmediata antes de publicar."
+        )
+    elif severidad == "MEDIA":
+        riesgo = (
+            "FIN puede generar respuestas inconsistentes en escenarios específicos. "
+            "El impacto es limitado pero puede erosionar la confianza del cliente "
+            "si los casos conflictivos son frecuentes."
+        )
+    else:
+        riesgo = (
+            "Los conflictos detectados tienen bajo impacto operativo. "
+            "Se recomienda revisar para mantener coherencia del conjunto de guidelines."
+        )
+
+    # Construir recomendaciones
+    recommendations = []
+
+    if any("escalar" in c for c in conflicts):
+        recommendations.append(
+            "Unificar criterios de escalamiento: definir condiciones únicas y explícitas."
+        )
+
+    if any("prohíbe" in c or "obliga" in c for c in conflicts):
+        recommendations.append(
+            "Revisar guidelines contradictorias sobre acciones permitidas y eliminar la redundante."
+        )
+
+    if any("condiciones" in c for c in conflicts):
+        recommendations.append(
+            "Delimitar con precisión los segmentos de cliente o escenarios a los que aplica cada guideline."
+        )
+
+    if any("prioridades" in c for c in conflicts):
+        recommendations.append(
+            "Establecer una jerarquía de prioridades única por escenario y documentarla."
+        )
+
+    if any("contradictorias" in c for c in conflicts):
+        recommendations.append(
+            "Consolidar guidelines que cubren el mismo caso en una sola regla canónica."
+        )
+
+    if any("duplicado" in c for c in conflicts):
+        recommendations.append(
+            "Eliminar o fusionar las guidelines duplicadas para reducir ambigüedad."
+        )
+
+    if any("global" in c for c in conflicts):
+        recommendations.append(
+            f"Documentar explícitamente qué reglas del producto '{product}' "
+            "sobreescriben las reglas globales y cuáles las heredan."
+        )
+
+    if not recommendations:
+        recommendations.append(
+            "Continúa monitoreando el conjunto de guidelines a medida que crece."
+        )
+
+    # Construir respuesta
+    if not conflicts:
+        return "✅ No se detectaron conflictos entre las guidelines."
+
+    result_parts = [
+        f"**Detección de Conflictos — Producto: {product.upper()}**\n"
+    ]
+
+    if context:
+        result_parts.append(
+            f"**Contexto:** {context}\n"
+        )
+
+    result_parts.append(
+        f"**Guidelines analizadas:** {len(guidelines)}\n"
+    )
+
+    result_parts.append("CONFLICTOS DETECTADOS\n")
+    for conflict in conflicts:
+        result_parts.append(f"- {conflict}")
+
+    result_parts.append(f"\nSEVERIDAD\n\n{severidad}")
+
+    result_parts.append(f"\nRIESGO\n\n{riesgo}")
+
+    result_parts.append("\nRECOMENDACIÓN\n")
+    for rec in recommendations:
+        result_parts.append(f"- {rec}")
+
+    return "\n".join(result_parts)
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
