@@ -239,6 +239,146 @@ JUSTIFICACIÓN
 """
 
 
+@mcp.tool()
+async def classify_guideline(
+    guideline: str,
+    product: str = "general",
+    context: str = ""
+) -> str:
+    """
+    Clasifica una guideline de FIN asignando categoría principal,
+    subcategoría, nivel de riesgo, prioridad y justificación.
+    """
+
+    text = guideline.lower()
+
+    # Determinar categoría principal
+    if any(w in text for w in ["escalar", "transferir", "agente humano", "agente"]):
+        categoria = "Escalamiento"
+    elif any(w in text for w in ["factura", "cobro", "pago", "cargo", "reembolso"]):
+        categoria = "Facturación"
+    elif any(w in text for w in ["contraseña", "acceso", "usuario", "cuenta", "sesión"]):
+        categoria = "Acceso y Seguridad"
+    elif any(w in text for w in ["error", "fallo", "no funciona", "problema técnico"]):
+        categoria = "Soporte Técnico"
+    elif any(w in text for w in ["onboarding", "bienvenida", "registro", "activación"]):
+        categoria = "Onboarding"
+    else:
+        categoria = "General"
+
+    # Determinar subcategoría
+    if "frustración" in text or "frustrado" in text or "molesto" in text or "enojado" in text:
+        subcategoria = "Gestión Emocional"
+    elif "cuando" in text or "si " in text or "solo si" in text:
+        subcategoria = "Flujo Condicional"
+    elif any(w in text for w in ["siempre", "nunca", "todos", "ninguno"]):
+        subcategoria = "Regla Absoluta"
+    elif len(guideline) > 300:
+        subcategoria = "Política Extensa"
+    else:
+        subcategoria = "Instrucción Simple"
+
+    # Calcular nivel de riesgo
+    risk_score = 0
+
+    absolute_words = ["siempre", "nunca", "todos", "ninguno", "cualquier"]
+    for word in absolute_words:
+        if word in text:
+            risk_score += 2
+
+    if "escalar" in text or "transferir" in text:
+        risk_score += 2
+        if "cuando" not in text and "si " not in text:
+            risk_score += 3
+
+    if "frustración" in text or "molesto" in text or "enojado" in text:
+        risk_score += 1
+
+    if len(guideline.strip()) < 20:
+        risk_score += 2
+
+    if risk_score >= 7:
+        nivel_riesgo = "ALTO"
+    elif risk_score >= 4:
+        nivel_riesgo = "MEDIO"
+    else:
+        nivel_riesgo = "BAJO"
+
+    # Determinar prioridad
+    if nivel_riesgo == "ALTO" or categoria == "Escalamiento":
+        prioridad = "URGENTE"
+    elif nivel_riesgo == "MEDIO" or categoria in ["Facturación", "Acceso y Seguridad"]:
+        prioridad = "ALTA"
+    elif nivel_riesgo == "BAJO" and subcategoria == "Instrucción Simple":
+        prioridad = "NORMAL"
+    else:
+        prioridad = "MEDIA"
+
+    # Construir justificación
+    justificacion_items = []
+
+    if nivel_riesgo == "ALTO":
+        justificacion_items.append(
+            "Riesgo alto por presencia de términos absolutos o escalamiento sin criterios definidos."
+        )
+    elif nivel_riesgo == "MEDIO":
+        justificacion_items.append(
+            "Riesgo medio por ambigüedad o condiciones de escalamiento parcialmente definidas."
+        )
+    else:
+        justificacion_items.append(
+            "Riesgo bajo. La guideline es clara y no contiene instrucciones de alto impacto."
+        )
+
+    if subcategoria == "Regla Absoluta":
+        justificacion_items.append(
+            "Contiene términos absolutos que pueden generar comportamientos no deseados en FIN."
+        )
+
+    if subcategoria == "Gestión Emocional":
+        justificacion_items.append(
+            "Involucra emociones del cliente, lo que requiere manejo cuidadoso antes de escalar."
+        )
+
+    if prioridad == "URGENTE":
+        justificacion_items.append(
+            "Prioridad urgente: debe revisarse antes de desplegar en producción."
+        )
+
+    if product != "general":
+        justificacion_items.append(
+            f"Clasificada en contexto del producto '{product}'. Verificar colisiones con reglas globales."
+        )
+
+    result_parts = [
+        f"**Clasificación de Guideline — Producto: {product.upper()}**\n"
+    ]
+
+    result_parts.append(
+        f"**Guideline analizada:**\n> {guideline}\n"
+    )
+
+    if context:
+        result_parts.append(
+            f"**Contexto:** {context}\n"
+        )
+
+    result_parts.append(f"**Categoría principal:** {categoria}")
+    result_parts.append(f"**Subcategoría:** {subcategoria}")
+    result_parts.append(f"**Nivel de riesgo:** {nivel_riesgo}")
+    result_parts.append(f"**Prioridad:** {prioridad}")
+
+    result_parts.append("\n**Justificación:**")
+    for item in justificacion_items:
+        result_parts.append(f"- {item}")
+
+    result_parts.append(
+        "\n**Recomendación:** Usa audit_guideline y optimize_guideline para profundizar en los hallazgos detectados."
+    )
+
+    return "\n".join(result_parts)
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
