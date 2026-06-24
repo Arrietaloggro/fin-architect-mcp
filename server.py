@@ -1149,6 +1149,379 @@ async def score_guideline(
     return "\n".join(result_parts)
 
 
+@mcp.tool()
+async def simulate_fin(
+    conversation: str,
+    guidelines: list = [],
+    product: str = "general",
+    context: str = ""
+) -> str:
+    """
+    Simula el proceso de decisión que seguiría FIN para responder una
+    conversación usando las guidelines suministradas. Detecta intención,
+    emoción, prioridad, guidelines aplicables, decisión, respuesta,
+    riesgo de escalamiento, conflictos y nivel de confianza.
+    """
+
+    text = conversation.lower()
+
+    # ------------------------------------------------------------------ #
+    # 1. Detectar intención principal                                      #
+    # ------------------------------------------------------------------ #
+    intention_map = [
+        ("Facturación",    ["factura", "cobro", "pago", "cargo", "reembolso", "cobrar", "facturar"]),
+        ("Inventario",     ["inventario", "stock", "producto", "bodega", "existencia", "kardex"]),
+        ("Caja",           ["caja", "cierre de caja", "apertura de caja", "caja menor", "arqueo"]),
+        ("POS",            ["pos", "punto de venta", "terminal", "datafono", "tpv"]),
+        ("Restobar",       ["restobar", "restaurante", "mesa", "pedido", "cocina", "comanda"]),
+        ("DIAN",           ["dian", "factura electrónica", "cufe", "resolución dian", "rut"]),
+        ("Nómina",         ["nómina", "empleado", "liquidación", "contrato", "devengado", "descuento"]),
+        ("Reportes",       ["reporte", "informe", "exportar", "descargar", "estadística", "dashboard"]),
+        ("Configuración",  ["configuración", "configurar", "ajuste", "parámetro", "módulo", "activar"]),
+        ("Error técnico",  ["error", "fallo", "no funciona", "no carga", "pantalla", "bug", "problema técnico"]),
+        ("Acceso",         ["contraseña", "acceso", "usuario", "sesión", "ingresar", "login", "clave"]),
+        ("Seguridad",      ["seguridad", "fraude", "robo", "suplantación", "bloqueo", "permiso"]),
+    ]
+
+    intention = "Otro"
+    for label, keywords in intention_map:
+        if any(k in text for k in keywords):
+            intention = label
+            break
+
+    # ------------------------------------------------------------------ #
+    # 2. Detectar emoción                                                  #
+    # ------------------------------------------------------------------ #
+    if any(w in text for w in ["furioso", "harto", "no sirve", "pésimo", "terrible", "inaceptable"]):
+        emotion = "Frustrado"
+    elif any(w in text for w in ["molesto", "enojado", "molesta", "enojada", "fastidio", "mal servicio"]):
+        emotion = "Molesto"
+    elif any(w in text for w in ["urgente", "ya", "inmediatamente", "crítico", "emergencia", "no puedo esperar"]):
+        emotion = "Urgente"
+    elif any(w in text for w in ["no entiendo", "no sé", "confundido", "confundida", "cómo", "qué significa", "no comprendo"]):
+        emotion = "Confundido"
+    else:
+        emotion = "Neutral"
+
+    # ------------------------------------------------------------------ #
+    # 3. Determinar prioridad                                              #
+    # ------------------------------------------------------------------ #
+    if emotion in ("Frustrado",) or any(w in text for w in ["no puedo facturar", "sistema caído", "pérdida", "bloqueado"]):
+        priority = "CRÍTICA"
+    elif emotion in ("Molesto", "Urgente") or intention in ("DIAN", "Seguridad", "Error técnico"):
+        priority = "ALTA"
+    elif intention in ("Facturación", "Caja", "Nómina", "Acceso"):
+        priority = "MEDIA"
+    else:
+        priority = "BAJA"
+
+    # ------------------------------------------------------------------ #
+    # 4. Analizar guidelines recibidas                                     #
+    # ------------------------------------------------------------------ #
+    escalation_words   = ["escalar", "escala", "transferir", "transfiere", "agente humano", "agente"]
+    resolve_words      = ["resolver", "intenta resolver", "resuelve", "solucionar", "base de conocimiento"]
+    guide_words        = ["paso a paso", "guía", "instrucciones", "procedimiento", "pasos"]
+    info_request_words = ["solicita", "pide", "solicitar información", "confirma", "pregunta"]
+
+    applied_guidelines = []
+    guideline_flags    = {"escalate": False, "resolve": False, "guide": False, "request_info": False}
+    guideline_conflicts = []
+
+    for i, g in enumerate(guidelines):
+        g_lower = g.lower()
+        applies = False
+
+        # ¿Aplica al caso por intención o emoción?
+        intent_keywords = [kw for _, kws in intention_map for kw in kws]
+        emotion_keywords = [
+            "frustración", "frustrado", "molesto", "enojado", "urgente",
+            "emergencia", "error", "problema", "fallo",
+        ]
+        general_match = (
+            any(k in g_lower for k in intent_keywords)
+            or any(k in g_lower for k in emotion_keywords)
+            or any(k in g_lower for k in ["siempre", "nunca", "todos", "cualquier", "todo cliente"])
+        )
+
+        if general_match or not guidelines:
+            applies = True
+
+        if applies:
+            applied_guidelines.append(f"Guideline {i + 1}: \"{g}\"")
+
+            if any(w in g_lower for w in escalation_words):
+                guideline_flags["escalate"] = True
+            if any(w in g_lower for w in resolve_words):
+                guideline_flags["resolve"] = True
+            if any(w in g_lower for w in guide_words):
+                guideline_flags["guide"] = True
+            if any(w in g_lower for w in info_request_words):
+                guideline_flags["request_info"] = True
+
+    # Detectar conflictos entre guidelines aplicadas
+    if guideline_flags["escalate"] and guideline_flags["resolve"]:
+        guideline_conflicts.append(
+            "Una guideline indica escalar y otra indica intentar resolver primero."
+        )
+
+    if guideline_flags["escalate"] and guideline_flags["guide"]:
+        guideline_conflicts.append(
+            "Una guideline manda escalar pero otra indica guiar paso a paso."
+        )
+
+    # ------------------------------------------------------------------ #
+    # 5. Decidir acción                                                    #
+    # ------------------------------------------------------------------ #
+    # Lógica de decisión en orden de prioridad
+    needs_more_info = any(
+        w in text for w in ["no sé", "no recuerdo", "no tengo", "cuál es", "dónde está", "cuándo"]
+    )
+    is_complex = len(conversation.split()) > 40 or any(
+        w in text for w in ["paso a paso", "cómo hago", "proceso", "procedimiento", "tutorial"]
+    )
+    is_blocked = any(
+        w in text for w in [
+            "no puedo", "bloqueado", "sin acceso", "no responde", "caído",
+            "error crítico", "perdí", "perdimos",
+        ]
+    )
+
+    if guideline_flags["escalate"] and not guideline_flags["resolve"] and (
+        emotion in ("Frustrado",) or priority == "CRÍTICA" or is_blocked
+    ):
+        decision = "Escalar"
+        should_escalate = True
+    elif needs_more_info or guideline_flags["request_info"]:
+        decision = "Solicitar información"
+        should_escalate = False
+    elif is_complex or guideline_flags["guide"]:
+        decision = "Guiar paso a paso"
+        should_escalate = False
+    elif is_blocked and not guideline_flags["resolve"]:
+        decision = "Escalar"
+        should_escalate = True
+    else:
+        decision = "Resolver"
+        should_escalate = False
+
+    # Forzar escalamiento si todas las guidelines lo indican y ninguna pide resolver
+    if guideline_flags["escalate"] and not guideline_flags["resolve"] and not guideline_flags["guide"]:
+        decision = "Escalar"
+        should_escalate = True
+
+    # ------------------------------------------------------------------ #
+    # 6. Razonamiento paso a paso                                          #
+    # ------------------------------------------------------------------ #
+    reasoning_steps = []
+
+    reasoning_steps.append(
+        f"FIN identifica que el usuario consulta sobre '{intention}' "
+        f"con un tono '{emotion}' y prioridad '{priority}'."
+    )
+
+    if applied_guidelines:
+        reasoning_steps.append(
+            f"FIN revisa {len(applied_guidelines)} guideline(s) aplicable(s) al caso."
+        )
+    else:
+        reasoning_steps.append(
+            "No se suministraron guidelines. FIN aplicará su comportamiento por defecto."
+        )
+
+    if guideline_flags["resolve"]:
+        reasoning_steps.append(
+            "Al menos una guideline indica intentar resolver antes de escalar. "
+            "FIN prioriza la resolución autónoma."
+        )
+    if guideline_flags["escalate"]:
+        reasoning_steps.append(
+            "Al menos una guideline indica escalar. FIN evalúa si el caso cumple los criterios."
+        )
+    if guideline_flags["guide"]:
+        reasoning_steps.append(
+            "Hay una guideline que sugiere guiar paso a paso. FIN considera ese camino."
+        )
+    if guideline_conflicts:
+        reasoning_steps.append(
+            "FIN detecta conflictos entre guidelines y aplica el criterio más conservador "
+            "(intentar resolver antes de escalar)."
+        )
+
+    if needs_more_info:
+        reasoning_steps.append(
+            "La consulta carece de información suficiente para resolverse. "
+            "FIN solicitará datos adicionales."
+        )
+
+    reasoning_steps.append(
+        f"FIN toma la decisión final: '{decision}'."
+    )
+
+    # ------------------------------------------------------------------ #
+    # 7. Generar respuesta simulada de FIN                                 #
+    # ------------------------------------------------------------------ #
+    greeting_map = {
+        "Frustrado": "Entiendo que esta situación es frustrante. Estoy aquí para ayudarte a resolverlo.",
+        "Molesto":   "Lamento los inconvenientes. Voy a ayudarte de inmediato.",
+        "Urgente":   "Entiendo que esto es urgente. Lo atiendo de inmediato.",
+        "Confundido": "Con gusto te explico cómo funciona esto.",
+        "Neutral":   "Hola, con gusto te ayudo.",
+    }
+
+    greeting = greeting_map.get(emotion, "Hola, con gusto te ayudo.")
+
+    response_body_map = {
+        "Resolver":             f"Voy a resolver tu consulta sobre {intention} ahora mismo.",
+        "Solicitar información": f"Para ayudarte con tu consulta de {intention}, necesito un poco más de información.",
+        "Guiar paso a paso":    f"Te voy a guiar paso a paso para resolver tu situación de {intention}.",
+        "Escalar":              f"Tu caso de {intention} requiere la atención de un agente especializado. Voy a transferirte.",
+    }
+
+    response_body = response_body_map.get(decision, "Estoy revisando tu caso.")
+    fin_response = f"{greeting} {response_body}"
+
+    if context:
+        fin_response += f" (Contexto: {context})"
+
+    # ------------------------------------------------------------------ #
+    # 8. Riesgo de escalamiento innecesario                                #
+    # ------------------------------------------------------------------ #
+    unnecessary_escalation_risk = "Bajo"
+
+    if decision == "Escalar":
+        if guideline_flags["resolve"] or guideline_flags["guide"]:
+            unnecessary_escalation_risk = "Alto"
+        elif emotion in ("Neutral", "Confundido") and priority in ("BAJA", "MEDIA"):
+            unnecessary_escalation_risk = "Medio"
+        else:
+            unnecessary_escalation_risk = "Bajo"
+    else:
+        if guideline_flags["escalate"] and not is_blocked:
+            unnecessary_escalation_risk = "Medio"
+
+    # ------------------------------------------------------------------ #
+    # 9. Nivel de confianza                                                #
+    # ------------------------------------------------------------------ #
+    confidence = 100
+
+    if not guidelines:
+        confidence -= 15
+
+    if guideline_conflicts:
+        confidence -= len(guideline_conflicts) * 10
+
+    if decision == "Escalar" and guideline_flags["resolve"]:
+        confidence -= 10
+
+    if needs_more_info and decision != "Solicitar información":
+        confidence -= 8
+
+    if emotion == "Neutral" and priority == "CRÍTICA":
+        confidence -= 5
+
+    if unnecessary_escalation_risk == "Alto":
+        confidence -= 10
+    elif unnecessary_escalation_risk == "Medio":
+        confidence -= 5
+
+    confidence = max(confidence, 0)
+
+    # ------------------------------------------------------------------ #
+    # Construcción de la respuesta                                         #
+    # ------------------------------------------------------------------ #
+    result_parts = [
+        f"**Simulación FIN — Producto: {product.upper()}**\n"
+    ]
+
+    result_parts.append(
+        f"**Conversación simulada:**\n> {conversation}\n"
+    )
+
+    result_parts.append("SIMULACIÓN FIN")
+
+    result_parts.append(f"\nPRODUCTO\n\n{product.upper()}")
+
+    result_parts.append(f"\nINTENCIÓN DETECTADA\n\n{intention}")
+
+    result_parts.append(f"\nEMOCIÓN\n\n{emotion}")
+
+    result_parts.append(f"\nPRIORIDAD\n\n{priority}")
+
+    result_parts.append("\nGUIDELINES APLICADAS\n")
+    if applied_guidelines:
+        for ag in applied_guidelines:
+            result_parts.append(f"- {ag}")
+    else:
+        result_parts.append("- No se suministraron guidelines. FIN usa comportamiento por defecto.")
+
+    result_parts.append("\nANÁLISIS\n")
+    for step in reasoning_steps:
+        result_parts.append(f"- {step}")
+
+    result_parts.append(f"\nDECISIÓN FINAL\n\n{decision}")
+
+    result_parts.append(f"\nRESPUESTA QUE FIN GENERARÍA\n\n{fin_response}")
+
+    result_parts.append(f"\n¿ESCALAR?\n\n{'Sí' if should_escalate else 'No'}")
+
+    justification_parts = []
+    if should_escalate:
+        justification_parts.append(
+            f"El caso cumple criterios de escalamiento: emoción '{emotion}', prioridad '{priority}'."
+        )
+        if is_blocked:
+            justification_parts.append("El usuario indica estar bloqueado sin solución disponible.")
+    else:
+        justification_parts.append(
+            f"FIN puede gestionar el caso de '{intention}' de forma autónoma."
+        )
+        if guideline_flags["resolve"]:
+            justification_parts.append(
+                "Una guideline indica intentar resolver antes de escalar."
+            )
+
+    result_parts.append("\nJUSTIFICACIÓN\n")
+    for j in justification_parts:
+        result_parts.append(f"- {j}")
+
+    result_parts.append(
+        f"\nRIESGO DE ESCALAMIENTO INNECESARIO\n\n{unnecessary_escalation_risk.upper()}"
+    )
+
+    result_parts.append("\nCONFLICTOS DETECTADOS\n")
+    if guideline_conflicts:
+        for c in guideline_conflicts:
+            result_parts.append(f"- {c}")
+    else:
+        result_parts.append("- No se detectaron conflictos entre las guidelines aplicadas.")
+
+    result_parts.append(f"\nCONFIANZA\n\n{confidence}%")
+
+    observations = []
+    if not guidelines:
+        observations.append(
+            "Se recomienda suministrar guidelines específicas para mejorar la precisión de la simulación."
+        )
+    if guideline_conflicts:
+        observations.append(
+            "Resuelve los conflictos entre guidelines con detect_conflicts antes de usar esta simulación en producción."
+        )
+    if confidence < 70:
+        observations.append(
+            "Confianza baja. Revisa y optimiza las guidelines con optimize_guideline y score_guideline."
+        )
+    if not observations:
+        observations.append(
+            "Simulación de alta confianza. Las guidelines están bien definidas para este caso."
+        )
+
+    result_parts.append("\nOBSERVACIONES\n")
+    for o in observations:
+        result_parts.append(f"- {o}")
+
+    return "\n".join(result_parts)
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
