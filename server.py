@@ -7,6 +7,8 @@ from starlette.responses import JSONResponse
 import uvicorn
 import os
 
+import decision_engine as _de
+
 # Inicializar servidor MCP
 mcp = FastMCP("fin-architect-mcp")
 
@@ -2033,218 +2035,13 @@ async def knowledge_review(
     No modifica los artículos. Solo analiza.
     """
 
-    import re as _re
-
-    # ════════════════════════════════════════════════════════════════════════ #
-    # ANÁLISIS INDIVIDUAL — misma lógica que audit_knowledge                  #
-    # ════════════════════════════════════════════════════════════════════════ #
-    def _analyze(article_text):
-        text       = article_text.strip()
-        text_lower = text.lower()
-        words      = text.split()
-        word_count = len(words)
-        sentences  = [s.strip() for s in _re.split(r'[.!?]+', text) if s.strip()]
-        lines      = [l.strip() for l in text.splitlines() if l.strip()]
-
-        _title_m = _re.match(r'^#+\s*(.+?)$', text.strip(), _re.MULTILINE)
-        title = _title_m.group(1).strip() if _title_m else (lines[0] if lines else "Sin título")
-
-        has_numbered_steps = bool(_re.search(r'(?:^|\n)\s*\d+[\.\)]\s+\S', text))
-        has_bullets        = bool(_re.search(r'(?:^|\n)\s*[-•*]\s+\S', text))
-        has_sections       = bool(_re.search(r'(?:^|\n)\s*#{1,3}\s+\S|(?:^|\n)[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{3,}:', text))
-
-        step_verbs_es = [
-            "hacer clic", "selecciona", "ingresa", "abre", "cierra", "navega",
-            "accede", "verifica", "confirma", "guarda", "descarga", "instala",
-            "actualiza", "reinicia", "copia", "pega", "escribe", "busca",
-            "haz clic", "pulsa", "presiona", "dirígete", "ve a", "entra",
-            "click", "ir a", "login", "inicia sesión",
-        ]
-        step_hits = [v for v in step_verbs_es if v in text_lower]
-
-        absolute_terms = ["siempre", "nunca", "todos", "ninguno", "cualquier caso"]
-        absolute_hits  = [t for t in absolute_terms if t in text_lower]
-
-        vague_phrases = [
-            "de alguna manera", "como sea posible", "en la medida",
-            "según corresponda", "a discreción", "podría", "quizás",
-            "tal vez", "depende", "en algunos casos", "eventualmente",
-            "normalmente", "generalmente", "usualmente",
-        ]
-        vague_hits = [p for p in vague_phrases if p in text_lower]
-
-        escalation_signals = [
-            "escalar", "escala", "contacta a soporte", "contactar soporte",
-            "comunícate con", "transfiere", "agente", "asesor", "caso de soporte",
-            "ticket", "si el problema persiste", "si no se resuelve",
-        ]
-        has_escalation = any(e in text_lower for e in escalation_signals)
-        anti_escalation_rule = bool(_re.search(
-            r'nunca\s+(escal|contact|transf)\w*|no\s+(escal|contact|transf)\w*\s+este',
-            text_lower
-        ))
-
-        loop_patterns = [
-            "vuelve a intentar", "consulta nuevamente este artículo",
-            "reinicia nuevamente", "repite los pasos", "inténtalo otra vez",
-            "vuelve a reiniciar", "vuelve a intentar el procedimiento",
-            "repite el procedimiento", "intenta de nuevo", "vuelve a empezar",
-        ]
-        loop_hits  = [p for p in loop_patterns if p in text_lower]
-        loop_count = len(loop_hits)
-        if bool(_re.search(r'(vuelve al paso|regresa al paso|repite desde el paso|vuelve a la sección)', text_lower)):
-            loop_count += 1
-            loop_hits.append("referencia circular")
-        if loop_count == 0:       loop_risk_level = "BAJO"
-        elif loop_count == 1:     loop_risk_level = "MEDIO"
-        elif loop_count <= 3:     loop_risk_level = "ALTO"
-        else:                     loop_risk_level = "CRÍTICO"
-
-        kde_blockers = []
-        if loop_risk_level == "CRÍTICO":    kde_blockers.append("loop CRÍTICO")
-        if anti_escalation_rule:            kde_blockers.append("regla anti-escalamiento")
-        has_kde_blocker = bool(kde_blockers)
-
-        # Criterios — mismos pesos que audit_knowledge
-        clarity = 12
-        if vague_hits:       clarity -= min(len(vague_hits)*2, 8)
-        if word_count < 20:  clarity -= 5
-        clarity = max(clarity, 0)
-
-        structure = 10
-        if not has_numbered_steps: structure -= 4
-        if not has_sections:       structure -= 3
-        if not has_bullets and not has_numbered_steps: structure -= 3
-        structure = max(structure, 0)
-
-        steps_score = 12
-        if not step_hits:                             steps_score -= 7
-        if not has_numbered_steps and word_count > 60: steps_score -= 3
-        steps_score = max(steps_score, 0)
-
-        coverage_signals = [
-            "causa", "síntoma", "solución", "resultado", "verificar", "error",
-            "problema", "cuándo", "prerequisito", "requisito", "nota", "importante",
-            "advertencia", "aviso", "ejemplo",
-        ]
-        cov_hits = [s for s in coverage_signals if s in text_lower]
-        coverage = 8
-        if len(cov_hits) < 2:   coverage -= 5
-        elif len(cov_hits) < 4: coverage -= 2
-        coverage = max(coverage, 0)
-
-        ambiguity = 10
-        if absolute_hits: ambiguity -= min(len(absolute_hits)*3, 8)
-        ambiguity = max(ambiguity, 0)
-
-        length_score = 8
-        if word_count < 30:    length_score -= 6
-        elif word_count < 60:  length_score -= 3
-        elif word_count > 800: length_score -= 4
-        elif word_count > 400: length_score -= 2
-        length_score = max(length_score, 0)
-
-        consistency = 8
-        uses_tu    = bool(_re.search(r'\b(haz|selecciona|entra|ve a|escribe|abre)\b', text_lower))
-        uses_usted = bool(_re.search(r'\b(haga|seleccione|entre|vaya|escriba|abra)\b', text_lower))
-        if uses_tu and uses_usted: consistency -= 3
-        consistency = max(consistency, 0)
-
-        terminology = 8
-        technical_terms = ["api","webhook","endpoint","token","oauth","json","xml",
-                           "cufe","dian","rut","nit","uuid","erp","crm","ide"]
-        undefined_terms = [t for t in technical_terms if t in text_lower]
-        if undefined_terms:
-            has_defs = any(w in text_lower for w in ["significa","es decir","se refiere","corresponde a"])
-            if not has_defs: terminology -= min(len(undefined_terms)*2, 6)
-        terminology = max(terminology, 0)
-
-        fin_positive = [
-            "el usuario debe","el cliente debe","verifique","confirme",
-            "paso","primero","luego","después","finalmente","a continuación",
-            "si el error persiste","si el problema continúa","si no funciona",
-        ]
-        fin_usability = 10
-        if not any(p in text_lower for p in fin_positive): fin_usability -= 5
-        fin_usability = max(fin_usability, 0)
-
-        escalation_score = 8
-        if anti_escalation_rule:   escalation_score -= 7
-        elif has_escalation:
-            esc_cond = any(c in text_lower for c in ["si el problema persiste","si no se resuelve","si el error continúa"])
-            if not esc_cond: escalation_score -= 4
-        else:                      escalation_score -= 5
-        escalation_score = max(escalation_score, 0)
-
-        maintainability = 7
-        date_patterns = [
-            _re.compile(r'\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+\d{4}\b', _re.I),
-            _re.compile(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b'),
-        ]
-        date_refs = []
-        for dp in date_patterns: date_refs.extend(dp.findall(text))
-        if date_refs: maintainability -= 3
-        maintainability = max(maintainability, 0)
-
-        risky_actions = ["eliminar","borrar","formatear","reinstalar","resetear a fábrica",
-                         "eliminar todos los datos","vaciar la base","desinstalar"]
-        operational_risk_score = 7
-        risky_hits = [r for r in risky_actions if r in text_lower]
-        if risky_hits: operational_risk_score -= min(len(risky_hits)*2, 5)
-        operational_risk_score = max(operational_risk_score, 0)
-
-        _raw_total = max(0, min(100,
-            clarity + structure + steps_score + coverage + ambiguity
-            + length_score + consistency + terminology + fin_usability
-            + escalation_score + maintainability + operational_risk_score
-        ))
-
-        kde_health = _raw_total
-        if absolute_hits:              kde_health = max(0, kde_health - min(len(absolute_hits)*2, 8))
-        if loop_risk_level == "ALTO":      kde_health = max(0, kde_health - 8)
-        elif loop_risk_level == "CRÍTICO": kde_health = max(0, kde_health - 15)
-        if has_kde_blocker:            kde_health = min(kde_health, 60)
-        kde_health = max(0, min(100, kde_health))
-
-        if has_kde_blocker:       deploy = "BLOQUEADO"
-        elif kde_health < 50:     deploy = "NO LISTO"
-        elif kde_health < 78:     deploy = "LISTO CON RECOMENDACIONES"
-        else:                     deploy = "LISTO"
-
-        problems = []
-        if loop_count > 0:          problems.append(f"Loop {loop_risk_level}")
-        if anti_escalation_rule:    problems.append("Regla anti-escalamiento")
-        elif not has_escalation:    problems.append("Sin escalamiento")
-        if absolute_hits:           problems.append(f"Absolutos: {', '.join(absolute_hits)}")
-        if not step_hits:           problems.append("Sin verbos de acción")
-        if not has_numbered_steps:  problems.append("Sin pasos numerados")
-        if word_count < 30:         problems.append("Artículo demasiado corto")
-
-        return {
-            "title":               title,
-            "word_count":          word_count,
-            "kde_health":          kde_health,
-            "loop_risk_level":     loop_risk_level,
-            "loop_count":          loop_count,
-            "loop_hits":           loop_hits,
-            "anti_escalation_rule": anti_escalation_rule,
-            "has_escalation":      has_escalation,
-            "absolute_hits":       absolute_hits,
-            "has_kde_blocker":     has_kde_blocker,
-            "kde_blockers":        kde_blockers,
-            "deploy":              deploy,
-            "problems":            problems,
-            "text_lower":          text_lower,
-            "words_set":           frozenset(text_lower.split()),
-        }
-
     # ════════════════════════════════════════════════════════════════════════ #
     # VALIDACIÓN DE ENTRADA                                                    #
     # ════════════════════════════════════════════════════════════════════════ #
     if not articles:
         return "No se proporcionaron artículos para analizar."
 
-    analyses = [_analyze(str(a)) for a in articles]
+    analyses = [_de.kde_score_article(str(a)) for a in articles]
     n = len(analyses)
 
     # ════════════════════════════════════════════════════════════════════════ #
@@ -2649,161 +2446,6 @@ async def repository_review(
     import re
     import math
 
-    # ── KDE helper (inline) ──────────────────────────────────────────────────
-
-    def _analyze_article(text: str) -> dict:
-        t = text.lower()
-        words = set(re.findall(r'\b\w+\b', t))
-
-        # Loop risk
-        _lr_kw = ["loop", "bucle", "ciclo infinito", "repite", "vuelve a preguntar",
-                  "pregunta lo mismo", "mismo resultado", "sin salida", "sin solución"]
-        _lr_count = sum(1 for k in _lr_kw if k in t)
-        if _lr_count >= 3:
-            loop_risk = "CRÍTICO"
-        elif _lr_count == 2:
-            loop_risk = "ALTO"
-        elif _lr_count == 1:
-            loop_risk = "MEDIO"
-        else:
-            loop_risk = "BAJO"
-
-        # Anti-escalation
-        _ae_patterns = [
-            r"nunca escal[ae]", r"no escal[ae]", r"no (se |)transfier[ae]",
-            r"prohibid[oa] escal[ae]", r"sin excepci[oó]n[^.]*no escal[ae]",
-            r"bajo ning[uú]n concepto[^.]*escal[ae]", r"en ning[uú]n caso[^.]*escal[ae]"
-        ]
-        anti_escalation = any(re.search(p, t) for p in _ae_patterns)
-
-        # Absolute prohibitions
-        _abs_kw = ["nunca", "jamás", "absolutamente prohibido", "en ningún caso",
-                   "bajo ningún concepto", "sin excepción"]
-        absolute_hits = [k for k in _abs_kw if k in t]
-
-        # Has resolution
-        _res_kw = ["resuelve", "solución", "resolver", "resultado", "cierra", "finaliza",
-                   "concluye", "éxito", "completado", "solucionado", "resuelto"]
-        has_resolution = any(k in t for k in _res_kw)
-
-        # Has steps
-        _steps_kw = ["paso", "step", "primero", "segundo", "1.", "2.", "a)", "b)"]
-        has_steps = any(k in t for k in _steps_kw)
-
-        # Has escalation
-        _esc_kw = ["escala", "escalar", "transfiere", "transferir", "derivar",
-                   "agente humano", "supervisor", "área responsable"]
-        has_escalation = any(k in t for k in _esc_kw)
-
-        # Has objective
-        _obj_kw = ["objetivo", "propósito", "finalidad", "para qué", "cuando aplica",
-                   "cuándo aplica", "este artículo"]
-        has_objective = any(k in t for k in _obj_kw)
-
-        # Word count
-        wc = len(text.split())
-
-        # Raw total
-        _rt = 100
-        if not has_resolution:   _rt -= 15
-        if not has_steps:        _rt -= 10
-        if not has_escalation:   _rt -= 8
-        if not has_objective:    _rt -= 8
-        if wc < 30:              _rt -= 12
-        elif wc > 600:           _rt -= 6
-        if absolute_hits:        _rt = max(0, _rt - min(len(absolute_hits) * 2, 8))
-        if loop_risk == "ALTO":  _rt = max(0, _rt - 8)
-        elif loop_risk == "CRÍTICO": _rt = max(0, _rt - 15)
-
-        # Blockers
-        has_blocker = loop_risk == "CRÍTICO" or anti_escalation
-        kde_health = _rt
-        if has_blocker:
-            kde_health = min(kde_health, 60)
-
-        if has_blocker or kde_health < 50:
-            risk = "ALTO"
-        elif kde_health < 78:
-            risk = "MEDIO"
-        else:
-            risk = "BAJO"
-
-        # Resolution rate approximation
-        _esc_ok = has_escalation and not anti_escalation
-        res_rate = 90 if (has_resolution and _esc_ok) else (70 if has_resolution else 40)
-        if has_blocker:
-            res_rate = min(res_rate, 40)
-
-        return {
-            "health": kde_health,
-            "risk": risk,
-            "blocked": has_blocker,
-            "loop_risk": loop_risk,
-            "anti_escalation": anti_escalation,
-            "resolution_rate": res_rate,
-            "words": words,
-            "has_escalation": has_escalation,
-            "has_resolution": has_resolution,
-        }
-
-    def _analyze_guideline(text: str) -> dict:
-        t = text.lower()
-        words = set(re.findall(r'\b\w+\b', t))
-
-        _ae_patterns = [
-            r"nunca escal[ae]", r"no escal[ae]", r"no (se |)transfier[ae]",
-            r"prohibid[oa] escal[ae]", r"bajo ning[uú]n concepto[^.]*escal[ae]",
-            r"en ning[uú]n caso[^.]*escal[ae]"
-        ]
-        anti_escalation = any(re.search(p, t) for p in _ae_patterns)
-
-        _esc_kw = ["escala", "escalar", "transfiere", "transferir", "derivar"]
-        has_escalation = any(k in t for k in _esc_kw)
-
-        _abs_kw = ["nunca", "jamás", "absolutamente prohibido", "en ningún caso",
-                   "bajo ningún concepto", "sin excepción"]
-        absolute_hits = [k for k in _abs_kw if k in t]
-
-        has_trigger = any(k in t for k in ["cuando", "si el", "si la", "en caso de", "al detectar"])
-        has_action  = any(k in t for k in ["responde", "indica", "informa", "ejecuta", "deriva"])
-
-        _rt = 100
-        if not has_trigger:  _rt -= 12
-        if not has_action:   _rt -= 12
-        if absolute_hits:    _rt = max(0, _rt - min(len(absolute_hits) * 2, 8))
-        if anti_escalation:  _rt = min(_rt, 60)
-
-        blocked = anti_escalation or _rt < 50
-
-        return {
-            "health": _rt,
-            "blocked": blocked,
-            "anti_escalation": anti_escalation,
-            "words": words,
-            "has_escalation": has_escalation,
-        }
-
-    def _jaccard(w1: set, w2: set) -> float:
-        if not w1 or not w2:
-            return 0.0
-        return len(w1 & w2) / len(w1 | w2)
-
-    # ── Coverage categories ──────────────────────────────────────────────────
-
-    _topic_cats = {
-        "facturación":      ["factura", "facturación", "cobro", "pago", "cargo", "recibo"],
-        "soporte técnico":  ["error", "falla", "problema", "no funciona", "reiniciar", "técnico"],
-        "cancelación":      ["cancelar", "cancelación", "baja", "terminar", "finalizar contrato"],
-        "configuración":    ["configurar", "configuración", "ajuste", "parámetro", "instalar"],
-        "escalamiento":     ["escalar", "escala", "supervisor", "agente humano", "área responsable"],
-        "reembolso":        ["reembolso", "devolución", "devolver", "reintegro"],
-        "onboarding":       ["registro", "activar", "alta", "nuevo usuario", "cómo empezar"],
-        "seguridad":        ["contraseña", "clave", "acceso", "bloqueo", "seguridad", "autenticación"],
-        "reportes":         ["reporte", "informe", "estadística", "consulta", "historial"],
-        "integraciones":    ["integración", "api", "conector", "sistema externo", "sincronizar"],
-        "general":          ["información", "consulta general", "pregunta", "detalle", "dato"],
-    }
-
     # ── Per-product analysis ─────────────────────────────────────────────────
 
     product_results = []
@@ -2814,21 +2456,21 @@ async def repository_review(
         articles    = prod.get("knowledge_articles", [])
 
         # Guidelines analysis
-        g_results = [_analyze_guideline(g) for g in guidelines]
+        g_results = [_de.kde_score_guideline_fast(g) for g in guidelines]
         g_blocked_count   = sum(1 for r in g_results if r["blocked"])
         g_healths         = [r["health"] for r in g_results] if g_results else [100]
         g_avg_health      = round(sum(g_healths) / len(g_healths)) if g_healths else 100
         g_conflicts       = 0
         for i in range(len(g_results)):
             for j in range(i + 1, len(g_results)):
-                sim = _jaccard(g_results[i]["words"], g_results[j]["words"])
+                sim = _de.jaccard(g_results[i]["words"], g_results[j]["words"])
                 one_esc  = g_results[i]["has_escalation"] or g_results[j]["has_escalation"]
                 one_anti = g_results[i]["anti_escalation"] or g_results[j]["anti_escalation"]
                 if sim >= 0.30 and one_esc and one_anti:
                     g_conflicts += 1
 
         # Articles analysis
-        a_results = [_analyze_article(a) for a in articles]
+        a_results = [_de.kde_score_article_fast(a) for a in articles]
         a_blocked_count   = sum(1 for r in a_results if r["blocked"])
         a_critical_count  = sum(1 for r in a_results if r["risk"] == "ALTO")
         a_healths         = [r["health"] for r in a_results] if a_results else [100]
@@ -2838,13 +2480,13 @@ async def repository_review(
         a_dups = 0
         for i in range(len(a_results)):
             for j in range(i + 1, len(a_results)):
-                if _jaccard(a_results[i]["words"], a_results[j]["words"]) >= 0.55:
+                if _de.jaccard(a_results[i]["words"], a_results[j]["words"]) >= 0.55:
                     a_dups += 1
 
         # Coverage
         all_art_text = " ".join(articles).lower()
-        covered_cats   = [cat for cat, kws in _topic_cats.items() if any(k in all_art_text for k in kws)]
-        missing_cats   = [cat for cat in _topic_cats if cat not in covered_cats]
+        covered_cats   = [cat for cat, kws in _de.TOPIC_CATEGORIES.items() if any(k in all_art_text for k in kws)]
+        missing_cats   = [cat for cat in _de.TOPIC_CATEGORIES if cat not in covered_cats]
 
         # Product-level health (weighted avg guidelines 40% + articles 60%)
         prod_health = round(g_avg_health * 0.4 + a_avg_health * 0.6)
@@ -2894,10 +2536,8 @@ async def repository_review(
     ) + " " + " ".join(
         a for prod in products for a in prod.get("knowledge_articles", [])
     )
-    all_text_global = all_text_global.lower()
-    globally_covered = [cat for cat, kws in _topic_cats.items() if any(k in all_text_global for k in kws)]
-    globally_missing = [cat for cat in _topic_cats if cat not in globally_covered]
-    global_coverage_pct = round(len(globally_covered) / len(_topic_cats) * 100)
+    globally_covered, globally_missing = _de.compute_coverage(all_text_global)
+    global_coverage_pct = round(len(globally_covered) / len(_de.TOPIC_CATEGORIES) * 100)
 
     # Products blocked / at risk
     prod_blocked_count = sum(1 for r in product_results if r["prod_blocked"])
@@ -2911,42 +2551,15 @@ async def repository_review(
         global_health = min(global_health, 60)
 
     # Knowledge Debt
-    _debt_raw = (
-        total_a_blocked   * 15
-        + total_g_conflicts * 10
-        + total_a_dups      * 8
-        + len(globally_missing) * 12
-        + total_g_blocked   * 8
-        + (total_a_critical - total_a_blocked) * 5
+    knowledge_debt, _ = _de.compute_knowledge_debt(
+        total_a_blocked, total_g_conflicts, total_a_dups,
+        len(globally_missing), total_g_blocked,
+        total_a_critical - total_a_blocked
     )
-    knowledge_debt = min(100, round(_debt_raw / 200 * 100))
-
-    if knowledge_debt >= 70:
-        debt_label = "CRÍTICO"
-        debt_emoji = "🔴"
-    elif knowledge_debt >= 45:
-        debt_label = "ALTO"
-        debt_emoji = "🟠"
-    elif knowledge_debt >= 20:
-        debt_label = "MEDIO"
-        debt_emoji = "🟡"
-    else:
-        debt_label = "BAJO"
-        debt_emoji = "🟢"
+    debt_label, debt_emoji = _de.debt_label_emoji(knowledge_debt)
 
     # Global status
-    if prod_blocked_count > 0 or global_health < 50:
-        global_status = "BLOQUEADO"
-        global_emoji  = "🔴"
-    elif global_health < 70 or prod_high_risk > 0:
-        global_status = "EN REVISIÓN"
-        global_emoji  = "🟠"
-    elif global_health < 85:
-        global_status = "ACEPTABLE"
-        global_emoji  = "🟡"
-    else:
-        global_status = "SALUDABLE"
-        global_emoji  = "🟢"
+    global_status, global_emoji = _de.global_status_from_health(global_health, prod_blocked_count, prod_high_risk)
 
     # ── Ranking ──────────────────────────────────────────────────────────────
 
@@ -3035,7 +2648,7 @@ async def repository_review(
     parts.append("")
     parts.append(f"  Guidelines totales : {total_guidelines}  |  Bloqueadas : {total_g_blocked}  |  Conflictos : {total_g_conflicts}")
     parts.append(f"  Artículos totales  : {total_articles}  |  Bloqueados : {total_a_blocked}  |  Duplicados : {total_a_dups}")
-    parts.append(f"  Cobertura global   : {global_coverage_pct}%  ({len(globally_covered)}/{len(_topic_cats)} categorías)")
+    parts.append(f"  Cobertura global   : {global_coverage_pct}%  ({len(globally_covered)}/{len(_de.TOPIC_CATEGORIES)} categorías)")
     parts.append("")
 
     # PRODUCTOS ANALIZADOS (tabla)
@@ -3062,7 +2675,7 @@ async def repository_review(
 
     # COBERTURA GLOBAL
     parts += [div1, "COBERTURA GLOBAL", div1, ""]
-    parts.append(f"  Cobertura : {global_coverage_pct}% ({len(globally_covered)}/{len(_topic_cats)} categorías)")
+    parts.append(f"  Cobertura : {global_coverage_pct}% ({len(globally_covered)}/{len(_de.TOPIC_CATEGORIES)} categorías)")
     parts.append(f"  Cubiertas : {', '.join(globally_covered) if globally_covered else 'Ninguna'}")
     parts.append(f"  Faltantes : {', '.join(globally_missing) if globally_missing else 'Ninguna — cobertura completa ✓'}")
     parts.append("")
@@ -3224,66 +2837,35 @@ async def recommend_improvements(
     combined = "\n".join([repository_review, knowledge_review, architect_review, context])
     cl = combined.lower()
 
-    def _extract_int(pattern: str, text: str, default: int = 0) -> int:
-        m = re.search(pattern, text, re.IGNORECASE)
-        return int(m.group(1)) if m else default
-
-    def _extract_float(pattern: str, text: str, default: float = 0.0) -> float:
-        m = re.search(pattern, text, re.IGNORECASE)
-        return float(m.group(1)) if m else default
-
-    # Métricas desde repository_review
-    rr_text = repository_review.lower()
-    global_health    = _extract_int(r"salud global\s*[:\|]+\s*(\d+)", rr_text, 75)
-    knowledge_debt   = _extract_int(r"knowledge debt\s*[:\|]+\s*(\d+)", rr_text, 30)
-    prod_blocked     = _extract_int(r"productos bloqueados\s*[:\|]+\s*(\d+)", rr_text, 0)
-    prod_high_risk   = _extract_int(r"productos en riesgo alto\s*[:\|]+\s*(\d+)", rr_text, 0)
-    total_a_blocked  = _extract_int(r"artículos\s+bloqueados\s*[:\|]+\s*(\d+)", rr_text, 0)
-    total_g_blocked  = _extract_int(r"guidelines\s+bloqueadas\s*[:\|]+\s*(\d+)", rr_text, 0)
-    total_g_conflicts= _extract_int(r"conflictos\s+guidelines\s*[:\|]+\s*(\d+)", rr_text, 0)
-    total_a_dups     = _extract_int(r"artículos duplicados\s*[:\|]+\s*(\d+)", rr_text, 0)
-    coverage_pct     = _extract_int(r"cobertura\s+(?:global|temática)\s*[:\|]+\s*(\d+)%", rr_text, 70)
-    missing_cats_str = ""
-    m_mc = re.search(r"faltantes\s*:\s*([^\n]+)", rr_text)
-    if m_mc:
-        missing_cats_str = m_mc.group(1).strip()
-    missing_cats_count = len([c for c in missing_cats_str.split(",") if c.strip() and "ninguna" not in c.strip()])
-
-    # Métricas desde knowledge_review (enriquece si repository_review vacío)
-    kr_text = knowledge_review.lower()
-    if not repository_review:
-        total_a_blocked  = _extract_int(r"bloqueados?\s*[:\|]+\s*(\d+)", kr_text, total_a_blocked)
-        knowledge_debt   = max(knowledge_debt, _extract_int(r"artículos.*?crítico", kr_text, 0) * 15)
-
-    # Métricas desde architect_review
-    ar_text = architect_review.lower()
-    ar_score = _extract_int(r"score\s*[:\|]+\s*(\d+)", ar_text, global_health)
-    ar_blocked_g = _extract_int(r"guidelines.*?bloqueadas?\s*[:\|]+\s*(\d+)", ar_text, total_g_blocked)
-    total_g_blocked = max(total_g_blocked, ar_blocked_g)
-
-    # Fuente de datos disponible
-    has_rr = bool(repository_review.strip())
-    has_kr = bool(knowledge_review.strip())
-    has_ar = bool(architect_review.strip())
+    _metrics = _de.extract_metrics_from_reports(repository_review, knowledge_review, architect_review)
+    global_health      = _metrics["global_health"]
+    knowledge_debt     = _metrics["knowledge_debt"]
+    prod_blocked       = _metrics["prod_blocked"]
+    prod_high_risk     = _metrics["prod_high_risk"]
+    total_a_blocked    = _metrics["total_a_blocked"]
+    total_g_blocked    = _metrics["total_g_blocked"]
+    total_g_conflicts  = _metrics["total_g_conflicts"]
+    total_a_dups       = _metrics["total_a_dups"]
+    coverage_pct       = _metrics["coverage_pct"]
+    missing_cats_str   = _metrics["missing_cats_str"]
+    missing_cats_count = _metrics["missing_cats_count"]
+    has_rr             = _metrics["has_rr"]
+    has_kr             = _metrics["has_kr"]
+    has_ar             = _metrics["has_ar"]
 
     # ── Construcción de señales de mejora ────────────────────────────────────
     # Cada mejora: {nombre, desc, reason, impact, effort, roi, priority, tags}
-    # impact  : 1-5 (5 = máximo)
-    # effort  : 1-5 (1 = mínimo)
-    # roi     : impact / effort  (mayor = mejor)
-    # priority: calculada luego
 
     improvements = []
 
     def _add(nombre, desc, reason, impact, effort, tags=None):
-        roi = round(impact / effort, 2)
         improvements.append({
             "nombre": nombre,
             "desc": desc,
             "reason": reason,
             "impact": impact,
             "effort": effort,
-            "roi": roi,
+            "roi": _de.compute_roi(impact, effort),
             "tags": tags or [],
         })
 
@@ -3404,7 +2986,7 @@ async def recommend_improvements(
         )
 
     # Ordenar por ROI desc, luego impact desc
-    improvements.sort(key=lambda x: (-x["roi"], -x["impact"]))
+    improvements = _de.rank_improvements(improvements)
 
     # Top 10
     top10 = improvements[:10]
@@ -3782,37 +3364,29 @@ async def fin_dashboard(
     # ── Paso 3: extraer métricas del texto generado ───────────────────────────
     import re
 
-    def _int(pattern, text, default=0):
-        m = re.search(pattern, text, re.IGNORECASE)
-        return int(m.group(1)) if m else default
+    _metrics = _de.extract_metrics_from_reports(rr_output, "", "")
+    global_health      = _metrics["global_health"]
+    knowledge_debt     = _metrics["knowledge_debt"]
+    coverage_pct       = _metrics["coverage_pct"]
+    total_g_conflicts  = _metrics["total_g_conflicts"]
+    total_a_dups       = _metrics["total_a_dups"]
+    total_a_blocked    = _metrics["total_a_blocked"]
+    total_g_blocked    = _metrics["total_g_blocked"]
+    prod_blocked_cnt   = _metrics["prod_blocked"]
+    prod_high_risk     = _metrics["prod_high_risk"]
+    total_articles     = _metrics["total_articles"]
+    total_guidelines   = _metrics["total_guidelines"]
+    missing_cats_str   = _metrics["missing_cats_str"]
+    missing_cats_count = _metrics["missing_cats_count"]
 
-    rrl = rr_output.lower()
     ril = ri_output.lower()
 
-    global_health    = _int(r"salud global\s*[:\|]+\s*(\d+)", rrl, 75)
-    knowledge_debt   = _int(r"knowledge debt\s*[:\|]+\s*(\d+)", rrl, 30)
-    coverage_pct     = _int(r"cobertura\s+(?:global|temática)\s*[:\|]+\s*(\d+)%", rrl, 70)
-    total_g_conflicts= _int(r"conflictos\s+guidelines\s*[:\|]+\s*(\d+)", rrl, 0)
-    total_a_dups     = _int(r"artículos duplicados\s*[:\|]+\s*(\d+)", rrl, 0)
-    total_a_blocked  = _int(r"artículos\s+bloqueados\s*[:\|]+\s*(\d+)", rrl, 0)
-    total_g_blocked  = _int(r"guidelines\s+bloqueadas\s*[:\|]+\s*(\d+)", rrl, 0)
-    prod_blocked_cnt = _int(r"productos bloqueados\s*[:\|]+\s*(\d+)", rrl, 0)
-    prod_high_risk   = _int(r"productos en riesgo alto\s*[:\|]+\s*(\d+)", rrl, 0)
-    total_articles   = _int(r"artículos totales\s*[:\|]+\s*(\d+)", rrl, 0)
-    total_guidelines = _int(r"guidelines totales\s*[:\|]+\s*(\d+)", rrl, 0)
-
-    # Cobertura faltante
-    m_mc = re.search(r"faltantes\s*:\s*([^\n]+)", rrl)
-    missing_cats_str = m_mc.group(1).strip() if m_mc else ""
-    missing_cats_count = len([c for c in missing_cats_str.split(",")
-                               if c.strip() and "ninguna" not in c.strip()])
-
     # Simulación Top 5 desde recommend_improvements
-    sim5_health  = _int(r"top 5.*?health score\s*.*?→\s*(\d+)/100", ril, global_health)
-    sim5_debt    = _int(r"top 5.*?knowledge debt\s*.*?→\s*(\d+)/100", ril, knowledge_debt)
-    sim5_esc     = _int(r"top 5.*?reducción escalamientos\s*[:\|]+\s*↓\s*~(\d+)%", ril, 0)
-    sim5_res     = _int(r"top 5.*?resolución autónoma\s*[:\|]+\s*↑\s*~(\d+)%", ril, 0)
-    sim5_cov     = _int(r"top 5.*?cobertura temática\s*.*?→\s*(\d+)%", ril, coverage_pct)
+    sim5_health  = _de.extract_int(r"top 5.*?health score\s*.*?→\s*(\d+)/100", ril, global_health)
+    sim5_debt    = _de.extract_int(r"top 5.*?knowledge debt\s*.*?→\s*(\d+)/100", ril, knowledge_debt)
+    sim5_esc     = _de.extract_int(r"top 5.*?reducción escalamientos\s*[:\|]+\s*↓\s*~(\d+)%", ril, 0)
+    sim5_res     = _de.extract_int(r"top 5.*?resolución autónoma\s*[:\|]+\s*↑\s*~(\d+)%", ril, 0)
+    sim5_cov     = _de.extract_int(r"top 5.*?cobertura temática\s*.*?→\s*(\d+)%", ril, coverage_pct)
 
     # Loop risk global (proxy: si hay artículos bloqueados → presencia de loop risk)
     loop_risk_level = "CRÍTICO" if total_a_blocked >= 3 else (
@@ -3884,31 +3458,18 @@ async def fin_dashboard(
     _rec_health = min(100, 50 + _ri_qw_count * 10 + (20 if total_g_conflicts == 0 else 0))
 
     # Deployment readiness
-    if prod_blocked_cnt > 0 or total_a_blocked + total_g_blocked > 0:
-        deploy_ready = "NOT READY"
-        deploy_emoji = "🔴"
-    elif prod_high_risk > 0 or knowledge_debt >= 45:
-        deploy_ready = "READY WITH RECOMMENDATIONS"
-        deploy_emoji = "🟡"
-    elif global_health >= 85 and knowledge_debt < 20:
-        deploy_ready = "READY"
-        deploy_emoji = "🟢"
-    else:
-        deploy_ready = "READY WITH RECOMMENDATIONS"
-        deploy_emoji = "🟡"
+    deploy_ready, deploy_emoji = _de.deployment_readiness(
+        prod_blocked_cnt, total_a_blocked, total_g_blocked,
+        global_health, knowledge_debt, prod_high_risk
+    )
 
     # ── Semáforo por dimensión ────────────────────────────────────────────────
 
-    def _semaforo(val, thresholds=(70, 85)):
-        if val >= thresholds[1]:  return "🟢", "Excelente"
-        if val >= thresholds[0]:  return "🟡", "Atención"
-        return "🔴", "Crítico"
-
-    s_knowledge  = _semaforo(_know_health)
-    s_guidelines = _semaforo(_guide_health)
-    s_repository = _semaforo(_repo_health)
-    s_automation = _semaforo(_resolution, (55, 75))
-    s_escalation = _semaforo(_esc_avoidable + 50, (60, 75))
+    s_knowledge  = _de.semaforo(_know_health)
+    s_guidelines = _de.semaforo(_guide_health)
+    s_repository = _de.semaforo(_repo_health)
+    s_automation = _de.semaforo(_resolution, (55, 75))
+    s_escalation = _de.semaforo(_esc_avoidable + 50, (60, 75))
 
     # Top risks (construidos a partir de señales)
     top_risks = []
