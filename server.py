@@ -3199,6 +3199,559 @@ async def repository_review(
 
 
 @mcp.tool()
+async def recommend_improvements(
+    repository_review: str = "",
+    knowledge_review: str = "",
+    architect_review: str = "",
+    context: str = ""
+) -> str:
+    """
+    Analiza los resultados del ecosistema FIN Architect MCP y construye un plan
+    priorizado de mejoras con el mayor retorno esperado para FIN.
+
+    Toma decisiones, prioriza y recomienda. No audita, no puntúa, no revisa.
+
+    repository_review: salida de la herramienta repository_review (str, opcional)
+    knowledge_review : salida de la herramienta knowledge_review  (str, opcional)
+    architect_review : salida de la herramienta architect_review  (str, opcional)
+    context          : contexto adicional opcional
+    """
+
+    import re
+
+    # ── Extracción de señales ────────────────────────────────────────────────
+
+    combined = "\n".join([repository_review, knowledge_review, architect_review, context])
+    cl = combined.lower()
+
+    def _extract_int(pattern: str, text: str, default: int = 0) -> int:
+        m = re.search(pattern, text, re.IGNORECASE)
+        return int(m.group(1)) if m else default
+
+    def _extract_float(pattern: str, text: str, default: float = 0.0) -> float:
+        m = re.search(pattern, text, re.IGNORECASE)
+        return float(m.group(1)) if m else default
+
+    # Métricas desde repository_review
+    rr_text = repository_review.lower()
+    global_health    = _extract_int(r"salud global\s*[:\|]+\s*(\d+)", rr_text, 75)
+    knowledge_debt   = _extract_int(r"knowledge debt\s*[:\|]+\s*(\d+)", rr_text, 30)
+    prod_blocked     = _extract_int(r"productos bloqueados\s*[:\|]+\s*(\d+)", rr_text, 0)
+    prod_high_risk   = _extract_int(r"productos en riesgo alto\s*[:\|]+\s*(\d+)", rr_text, 0)
+    total_a_blocked  = _extract_int(r"artículos\s+bloqueados\s*[:\|]+\s*(\d+)", rr_text, 0)
+    total_g_blocked  = _extract_int(r"guidelines\s+bloqueadas\s*[:\|]+\s*(\d+)", rr_text, 0)
+    total_g_conflicts= _extract_int(r"conflictos\s+guidelines\s*[:\|]+\s*(\d+)", rr_text, 0)
+    total_a_dups     = _extract_int(r"artículos duplicados\s*[:\|]+\s*(\d+)", rr_text, 0)
+    coverage_pct     = _extract_int(r"cobertura\s+(?:global|temática)\s*[:\|]+\s*(\d+)%", rr_text, 70)
+    missing_cats_str = ""
+    m_mc = re.search(r"faltantes\s*:\s*([^\n]+)", rr_text)
+    if m_mc:
+        missing_cats_str = m_mc.group(1).strip()
+    missing_cats_count = len([c for c in missing_cats_str.split(",") if c.strip() and "ninguna" not in c.strip()])
+
+    # Métricas desde knowledge_review (enriquece si repository_review vacío)
+    kr_text = knowledge_review.lower()
+    if not repository_review:
+        total_a_blocked  = _extract_int(r"bloqueados?\s*[:\|]+\s*(\d+)", kr_text, total_a_blocked)
+        knowledge_debt   = max(knowledge_debt, _extract_int(r"artículos.*?crítico", kr_text, 0) * 15)
+
+    # Métricas desde architect_review
+    ar_text = architect_review.lower()
+    ar_score = _extract_int(r"score\s*[:\|]+\s*(\d+)", ar_text, global_health)
+    ar_blocked_g = _extract_int(r"guidelines.*?bloqueadas?\s*[:\|]+\s*(\d+)", ar_text, total_g_blocked)
+    total_g_blocked = max(total_g_blocked, ar_blocked_g)
+
+    # Fuente de datos disponible
+    has_rr = bool(repository_review.strip())
+    has_kr = bool(knowledge_review.strip())
+    has_ar = bool(architect_review.strip())
+
+    # ── Construcción de señales de mejora ────────────────────────────────────
+    # Cada mejora: {nombre, desc, reason, impact, effort, roi, priority, tags}
+    # impact  : 1-5 (5 = máximo)
+    # effort  : 1-5 (1 = mínimo)
+    # roi     : impact / effort  (mayor = mejor)
+    # priority: calculada luego
+
+    improvements = []
+
+    def _add(nombre, desc, reason, impact, effort, tags=None):
+        roi = round(impact / effort, 2)
+        improvements.append({
+            "nombre": nombre,
+            "desc": desc,
+            "reason": reason,
+            "impact": impact,
+            "effort": effort,
+            "roi": roi,
+            "tags": tags or [],
+        })
+
+    # Bloqueos de artículos
+    if total_a_blocked > 0:
+        _add(
+            "Desbloquear artículos críticos",
+            f"Corregir los {total_a_blocked} artículo(s) BLOQUEADO(s): eliminar reglas de anti-escalamiento absoluto y resolver loops instruccionales CRÍTICOS.",
+            "Los artículos bloqueados generan cierres incorrectos y loops en FIN, dañando directamente la experiencia del cliente.",
+            impact=5, effort=2,
+            tags=["sprint", "knowledge", "blocker"]
+        )
+
+    # Bloqueos de guidelines
+    if total_g_blocked > 0:
+        _add(
+            "Corregir guidelines bloqueadas",
+            f"Revisar y reescribir las {total_g_blocked} guideline(s) con reglas absolutas que prohíben el escalamiento.",
+            "Las guidelines bloqueadas instruyen a FIN a nunca escalar, lo que puede dejar casos sin resolver indefinidamente.",
+            impact=5, effort=2,
+            tags=["sprint", "guidelines", "blocker"]
+        )
+
+    # Conflictos entre guidelines
+    if total_g_conflicts > 0:
+        _add(
+            "Resolver conflictos entre guidelines",
+            f"Alinear las {total_g_conflicts} guideline(s) en conflicto: instrucciones de escalamiento contradictorias sobre el mismo tema.",
+            "Los conflictos producen comportamiento impredecible de FIN: en el mismo escenario puede escalar o no según qué guideline aplique.",
+            impact=4, effort=2,
+            tags=["sprint", "guidelines"]
+        )
+
+    # Artículos duplicados
+    if total_a_dups > 0:
+        _add(
+            "Consolidar artículos duplicados",
+            f"Fusionar los {total_a_dups} par(es) de artículos con similitud ≥ 55% (Jaccard) en artículos únicos y completos.",
+            "Los duplicados generan respuestas inconsistentes: FIN puede dar dos respuestas distintas al mismo problema según qué artículo recupere.",
+            impact=3, effort=1,
+            tags=["quick_win", "knowledge"]
+        )
+
+    # Cobertura temática
+    if missing_cats_count > 0:
+        _add(
+            "Ampliar cobertura temática",
+            f"Crear artículos y/o guidelines para las {missing_cats_count} categoría(s) sin cobertura: {missing_cats_str[:80]}.",
+            "Las categorías sin cobertura son puntos ciegos de FIN: cuando un cliente consulta sobre esos temas, FIN no tiene información y escala o responde incorrectamente.",
+            impact=4, effort=3,
+            tags=["mediano_plazo", "knowledge", "producto"]
+        )
+
+    # Health score bajo
+    if global_health < 70:
+        _add(
+            "Mejorar salud general del repositorio",
+            "Aumentar el porcentaje de artículos con estructura completa (objetivo, pasos, resultado, escalamiento).",
+            f"El repositorio tiene una salud de {global_health}/100. Artículos incompletos producen respuestas parciales y mayor tasa de escalamiento innecesario.",
+            impact=4, effort=3,
+            tags=["mediano_plazo", "knowledge"]
+        )
+    elif global_health < 85:
+        _add(
+            "Optimizar estructura de artículos existentes",
+            "Revisar artículos con salud < 78 y completar las secciones faltantes (pasos, resolución, escalamiento).",
+            f"Con salud actual {global_health}/100 hay margen para mejorar significativamente la resolución autónoma de FIN.",
+            impact=3, effort=2,
+            tags=["sprint", "knowledge"]
+        )
+
+    # Knowledge Debt alto
+    if knowledge_debt >= 45:
+        _add(
+            "Reducir Knowledge Debt",
+            f"Implementar un sprint dedicado a reducir el Knowledge Debt ({knowledge_debt}/100): priorizar bloqueos, conflictos y duplicados.",
+            "Un Knowledge Debt alto indica deuda técnica acumulada que se compone con el tiempo: cada semana sin atención hace el problema más costoso de resolver.",
+            impact=4, effort=3,
+            tags=["sprint", "estratégico"]
+        )
+
+    # Productos en alto riesgo
+    if prod_high_risk > 0:
+        _add(
+            f"Atender productos en riesgo ALTO",
+            f"Priorizar los {prod_high_risk} producto(s) con riesgo ALTO: auditar artículos y guidelines producto por producto.",
+            "Los productos en riesgo ALTO concentran la mayoría de los problemas. Atenderlos individualmente tiene el mayor impacto marginal sobre la salud global.",
+            impact=4, effort=3,
+            tags=["sprint", "estratégico"]
+        )
+
+    # Proceso de revisión periódica (siempre recomendable)
+    _add(
+        "Establecer revisión periódica del repositorio",
+        "Implementar un ciclo trimestral de repository_review + knowledge_review para detectar degradación antes de que impacte en producción.",
+        "Sin revisión periódica, el repositorio se degrada silenciosamente a medida que FIN opera y el negocio evoluciona.",
+        impact=3, effort=1,
+        tags=["quick_win", "proceso", "estratégico"]
+    )
+
+    # Versionado de guidelines
+    _add(
+        "Implementar versionado de guidelines y artículos",
+        "Registrar la versión, autor y fecha de última revisión en cada guideline y artículo.",
+        "Sin versionado es imposible saber qué guideline generó un comportamiento problemático ni cuándo fue introducido el error.",
+        impact=3, effort=2,
+        tags=["mediano_plazo", "proceso"]
+    )
+
+    # Completar con mejora de cobertura de escalamiento si no hay conflictos
+    if total_g_conflicts == 0 and total_g_blocked == 0:
+        _add(
+            "Mapear rutas de escalamiento por producto",
+            "Crear o revisar guidelines de escalamiento específicas para cada producto, asegurando que cada escenario de fallo tenga una ruta clara.",
+            "Incluso sin conflictos, la ausencia de rutas de escalamiento explícitas deja a FIN sin instrucciones en los casos límite.",
+            impact=3, effort=2,
+            tags=["mediano_plazo", "guidelines"]
+        )
+
+    # Ordenar por ROI desc, luego impact desc
+    improvements.sort(key=lambda x: (-x["roi"], -x["impact"]))
+
+    # Top 10
+    top10 = improvements[:10]
+
+    # Asignar prioridad numérica
+    for i, imp in enumerate(top10, 1):
+        imp["priority"] = i
+
+    # ── Segmentación ─────────────────────────────────────────────────────────
+
+    quick_wins    = [i for i in top10 if i["impact"] >= 4 and i["effort"] <= 2]
+    strategic     = [i for i in top10 if i["impact"] >= 4 and i["effort"] >= 3]
+    defer_list    = [i for i in improvements[10:] if i["impact"] <= 2]
+
+    # ── Simulación de impacto ─────────────────────────────────────────────────
+
+    def _simulate(n: int) -> dict:
+        selected = top10[:n]
+        _tags_all = set(t for i in selected for t in i["tags"])
+
+        # Health improvement
+        _health_delta = 0
+        if any("blocker" in i["tags"] for i in selected):
+            _health_delta += min(20, total_a_blocked * 5 + total_g_blocked * 4)
+        if any("guidelines" in i["tags"] for i in selected):
+            _health_delta += min(8, total_g_conflicts * 3)
+        if any("knowledge" in i["tags"] for i in selected):
+            _health_delta += min(6, (85 - global_health) // 2)
+        new_health = min(100, global_health + _health_delta)
+
+        # Escalamiento reduction
+        _esc_reduction = 0
+        if total_a_blocked > 0 and any("blocker" in i["tags"] for i in selected):
+            _esc_reduction += 15
+        if total_g_conflicts > 0 and any("guidelines" in i["tags"] for i in selected):
+            _esc_reduction += 8
+        if total_a_dups > 0 and any("knowledge" in i["tags"] for i in selected):
+            _esc_reduction += 5
+        _esc_reduction = min(35, _esc_reduction)
+
+        # Resolución autónoma
+        _resolution_delta = round(_esc_reduction * 0.7)
+
+        # Cobertura
+        _cov_delta = 0
+        if any("producto" in i["tags"] for i in selected):
+            _cov_delta = min(missing_cats_count * 9, 25)
+        new_coverage = min(100, coverage_pct + _cov_delta)
+
+        # Knowledge Debt reduction
+        _debt_delta = 0
+        if any("blocker" in i["tags"] for i in selected):
+            _debt_delta += total_a_blocked * 10 + total_g_blocked * 6
+        if any("guidelines" in i["tags"] for i in selected):
+            _debt_delta += total_g_conflicts * 7
+        if any("knowledge" in i["tags"] for i in selected):
+            _debt_delta += total_a_dups * 5 + missing_cats_count * 6
+        _debt_reduction = min(knowledge_debt, round(_debt_delta / 2))
+        new_debt = max(0, knowledge_debt - _debt_reduction)
+
+        return {
+            "health": new_health,
+            "health_delta": new_health - global_health,
+            "esc_reduction": _esc_reduction,
+            "resolution_delta": _resolution_delta,
+            "coverage": new_coverage,
+            "coverage_delta": new_coverage - coverage_pct,
+            "debt": new_debt,
+            "debt_delta": _debt_reduction,
+        }
+
+    sim3  = _simulate(3)
+    sim5  = _simulate(5)
+    sim10 = _simulate(10)
+
+    # ── Estimación global de mejora ───────────────────────────────────────────
+
+    main_problem = ""
+    top_action   = ""
+    improvement_pct = sim10["health_delta"]
+
+    if prod_blocked > 0 or total_a_blocked > 0 or total_g_blocked > 0:
+        main_problem = f"Existen bloqueos activos ({total_a_blocked} artículo(s) y {total_g_blocked} guideline(s)) que impiden el funcionamiento correcto de FIN."
+        top_action   = "Eliminar todos los bloqueos (anti-escalamiento absoluto y loops CRÍTICOS) antes de cualquier otra mejora."
+    elif total_g_conflicts > 0:
+        main_problem = f"Hay {total_g_conflicts} conflicto(s) entre guidelines que generan comportamiento impredecible de FIN."
+        top_action   = "Resolver los conflictos de escalamiento entre guidelines para que FIN tenga instrucciones coherentes."
+    elif knowledge_debt >= 45:
+        main_problem = f"El Knowledge Debt acumulado ({knowledge_debt}/100) indica deuda técnica que se agrava con el tiempo."
+        top_action   = "Ejecutar un sprint de reducción de Knowledge Debt: duplicados, cobertura y artículos en riesgo ALTO."
+    elif global_health < 70:
+        main_problem = f"La salud global del repositorio ({global_health}/100) está por debajo del umbral mínimo para operar con confianza."
+        top_action   = "Mejorar la estructura de los artículos existentes para alcanzar un mínimo de 78/100 de salud promedio."
+    else:
+        main_problem = "El repositorio está en condiciones aceptables. El principal riesgo es la degradación silenciosa sin revisión periódica."
+        top_action   = "Implementar un ciclo de revisión trimestral para mantener la calidad y detectar problemas antes de que escalen."
+
+    # ── Roadmap ───────────────────────────────────────────────────────────────
+
+    roadmap_week   = [i for i in top10 if "quick_win" in i["tags"] or ("sprint" in i["tags"] and i["effort"] <= 2)]
+    roadmap_sprint = [i for i in top10 if "sprint" in i["tags"] and i not in roadmap_week]
+    roadmap_month  = [i for i in top10 if "mediano_plazo" in i["tags"]]
+    roadmap_qtr    = [i for i in improvements if "estratégico" in i["tags"] and i not in top10]
+
+    # ── Riesgos si no se implementa ───────────────────────────────────────────
+
+    risks = []
+    if total_a_blocked > 0 or total_g_blocked > 0:
+        risks.append(
+            f"Si no se corrigen los {total_a_blocked + total_g_blocked} bloqueo(s), FIN continuará cerrando conversaciones sin resolver y generando loops: "
+            "el cliente experimenta respuestas circulares sin salida, lo que daña la confianza y aumenta el volumen de escalamientos manuales."
+        )
+    if total_g_conflicts > 0:
+        risks.append(
+            f"Si no se resuelven los {total_g_conflicts} conflicto(s) entre guidelines, FIN tomará decisiones contradictorias según el orden de recuperación de documentos. "
+            "Este comportamiento es difícil de diagnosticar y se manifiesta como inconsistencia percibida por el cliente."
+        )
+    if total_a_dups > 0:
+        risks.append(
+            f"Mantener {total_a_dups} par(es) de artículos duplicados sin consolidar genera respuestas inconsistentes a preguntas idénticas, "
+            "erosionando la percepción de confiabilidad de FIN."
+        )
+    if missing_cats_count > 0:
+        risks.append(
+            f"Sin ampliar la cobertura a las {missing_cats_count} categoría(s) faltantes, FIN tendrá puntos ciegos permanentes. "
+            "Cuando un cliente consulte sobre esos temas, FIN escalará innecesariamente o responderá con información genérica incorrecta."
+        )
+    if knowledge_debt >= 45:
+        risks.append(
+            f"El Knowledge Debt de {knowledge_debt}/100 se compone con el tiempo: cada ciclo de operación sin mejoras añade nuevos duplicados, "
+            "amplía los gaps de cobertura y acumula más inconsistencias. En 3–6 meses el costo de corrección puede ser 3–5× mayor."
+        )
+    if not risks:
+        risks.append(
+            "El repositorio está en buen estado. El principal riesgo es la degradación silenciosa: sin revisión periódica, "
+            "la calidad del repositorio disminuye gradualmente a medida que el negocio evoluciona y se agregan contenidos sin auditar."
+        )
+
+    # ── Reporte ───────────────────────────────────────────────────────────────
+
+    sep  = "=" * 70
+    div1 = "─" * 70
+    div2 = "─" * 40
+
+    def _impact_label(v):
+        return ["", "Muy bajo", "Bajo", "Medio", "Alto", "Muy alto"][v]
+
+    def _effort_label(v):
+        return ["", "Mínimo", "Bajo", "Medio", "Alto", "Muy alto"][v]
+
+    ctx_line = f"  Contexto: {context}" if context else ""
+    _sources = ", ".join(filter(None, [
+        "repository_review" if has_rr else "",
+        "knowledge_review"  if has_kr else "",
+        "architect_review"  if has_ar else "",
+    ])) or "sin datos externos (estimaciones base)"
+
+    parts = [sep]
+    parts.append("  RECOMMEND IMPROVEMENTS — FIN ARCHITECT")
+    parts.append("  Plan priorizado de mejoras con mayor retorno para FIN")
+    if ctx_line:
+        parts.append(ctx_line)
+    parts.append(f"  Fuentes: {_sources}")
+    parts.append(sep)
+    parts.append("")
+
+    # RESUMEN EJECUTIVO
+    parts += [div2, "RESUMEN EJECUTIVO", div2, ""]
+    parts.append(f"  ❓ Principal problema")
+    parts.append(f"     {main_problem}")
+    parts.append("")
+    parts.append(f"  🎯 Acción con mayor impacto")
+    parts.append(f"     {top_action}")
+    parts.append("")
+    parts.append(f"  📈 Mejora esperada si se implementan las 10 recomendaciones")
+    parts.append(f"     Health Score: {global_health}/100 → {sim10['health']}/100 (+{sim10['health_delta']} pts)")
+    parts.append(f"     Knowledge Debt: {knowledge_debt}/100 → {sim10['debt']}/100 (-{sim10['debt_delta']} pts)")
+    parts.append(f"     Escalamientos innecesarios: ↓ ~{sim10['esc_reduction']}%")
+    parts.append(f"     Resolución autónoma: ↑ ~{sim10['resolution_delta']}%")
+    parts.append("")
+
+    # TOP RECOMENDACIONES
+    parts += [div1, "TOP RECOMENDACIONES", div1, ""]
+    for imp in top10:
+        _impact_str = _impact_label(imp["impact"])
+        _effort_str = _effort_label(imp["effort"])
+        _roi_stars  = "★" * min(5, round(imp["roi"] * 2)) + "☆" * max(0, 5 - min(5, round(imp["roi"] * 2)))
+        parts.append(f"  #{imp['priority']}  {imp['nombre']}")
+        parts.append(f"      Descripción  : {imp['desc']}")
+        parts.append(f"      Razón        : {imp['reason']}")
+        parts.append(f"      Impacto      : {_impact_str} ({imp['impact']}/5)")
+        parts.append(f"      Esfuerzo     : {_effort_str} ({imp['effort']}/5)")
+        parts.append(f"      ROI          : {_roi_stars}  {imp['roi']}")
+        parts.append(f"      Prioridad    : #{imp['priority']}")
+        parts.append("")
+
+    # QUICK WINS
+    parts += [div1, "QUICK WINS  (Alto impacto · Bajo esfuerzo)", div1, ""]
+    if quick_wins:
+        for qw in quick_wins:
+            parts.append(f"  ⚡ #{qw['priority']} {qw['nombre']}  — ROI {qw['roi']} | Impacto {qw['impact']}/5 | Esfuerzo {qw['effort']}/5")
+            parts.append(f"       {qw['desc'][:100]}")
+            parts.append("")
+    else:
+        parts.append("  No se identificaron quick wins con los datos disponibles.")
+        parts.append("")
+
+    # PROYECTOS ESTRATÉGICOS
+    parts += [div1, "PROYECTOS ESTRATÉGICOS  (Muy alto impacto · Mediano–Alto esfuerzo)", div1, ""]
+    if strategic:
+        for st in strategic:
+            parts.append(f"  🏗️  #{st['priority']} {st['nombre']}  — ROI {st['roi']} | Impacto {st['impact']}/5 | Esfuerzo {st['effort']}/5")
+            parts.append(f"       {st['desc'][:100]}")
+            parts.append("")
+    else:
+        parts.append("  No se identificaron proyectos estratégicos. El repositorio está en buen estado.")
+        parts.append("")
+
+    # NO HACER TODAVÍA
+    parts += [div1, "NO HACER TODAVÍA", div1, ""]
+    if defer_list:
+        for d in defer_list[:5]:
+            parts.append(f"  ⏸️  {d['nombre']}  — Impacto {d['impact']}/5 | Esfuerzo {d['effort']}/5")
+            parts.append(f"       Por qué esperar: bajo impacto relativo al esfuerzo requerido (ROI {d['roi']}). "
+                         "Atender primero los bloqueadores y quick wins antes de invertir aquí.")
+            parts.append("")
+    else:
+        parts.append("  Todas las mejoras identificadas tienen ROI positivo. No hay ítems que diferir.")
+        parts.append("")
+
+    # SIMULACIÓN DE IMPACTO
+    parts += [div1, "SIMULACIÓN DE IMPACTO", div1, ""]
+    for label, sim, n in [("Top 3", sim3, 3), ("Top 5", sim5, 5), ("Top 10", sim10, 10)]:
+        parts.append(f"  📊 Si implementas el {label}:")
+        parts.append(f"     Health Score             : {global_health}/100 → {sim['health']}/100  (+{sim['health_delta']} pts)")
+        parts.append(f"     Reducción escalamientos  : ↓ ~{sim['esc_reduction']}%")
+        parts.append(f"     Resolución autónoma      : ↑ ~{sim['resolution_delta']}%")
+        parts.append(f"     Cobertura temática       : {coverage_pct}% → {sim['coverage']}%  (+{sim['coverage_delta']} pp)")
+        parts.append(f"     Knowledge Debt           : {knowledge_debt}/100 → {sim['debt']}/100  (-{sim['debt_delta']} pts)")
+        parts.append("")
+
+    # ROADMAP RECOMENDADO
+    parts += [div1, "ROADMAP RECOMENDADO", div1, ""]
+    parts.append("  📅 Esta semana")
+    if roadmap_week:
+        for r in roadmap_week[:4]:
+            parts.append(f"     → #{r['priority']} {r['nombre']}")
+    else:
+        parts.append("     → Revisar el estado actual del repositorio con repository_review")
+    parts.append("")
+    parts.append("  ⚡ Próximo Sprint (1–2 semanas)")
+    if roadmap_sprint:
+        for r in roadmap_sprint[:4]:
+            parts.append(f"     → #{r['priority']} {r['nombre']}")
+    else:
+        parts.append("     → Completar las acciones de esta semana")
+    parts.append("")
+    parts.append("  📋 Próximo Mes")
+    if roadmap_month:
+        for r in roadmap_month[:4]:
+            parts.append(f"     → #{r['priority']} {r['nombre']}")
+    else:
+        parts.append("     → Revisión de cobertura y calidad general")
+    parts.append("")
+    parts.append("  🔭 Próximo Trimestre")
+    if roadmap_qtr:
+        for r in roadmap_qtr[:3]:
+            parts.append(f"     → {r['nombre']}")
+    else:
+        parts.append("     → Auditoría completa y planificación del siguiente ciclo")
+    parts.append("")
+
+    # RECOMENDACIONES POR ROL
+    parts += [div1, "RECOMENDACIONES POR ROL", div1, ""]
+
+    parts.append("  👤 Director de Soporte")
+    if prod_blocked > 0 or total_a_blocked > 0 or total_g_blocked > 0:
+        parts.append(f"     Exigir la corrección inmediata de los {total_a_blocked + total_g_blocked} bloqueo(s) antes de ampliar el alcance de FIN.")
+        parts.append("     No autorizar nuevos despliegues hasta que el repositorio esté libre de bloqueos.")
+    elif prod_high_risk > 0:
+        parts.append(f"     Supervisar los {prod_high_risk} producto(s) en riesgo ALTO. Solicitar plan de acción en el próximo sprint.")
+    else:
+        parts.append("     El repositorio está en condiciones aceptables. Mantener el ciclo de revisión periódica.")
+    parts.append("")
+
+    parts.append("  👤 Product Manager (FIN)")
+    if knowledge_debt >= 45:
+        parts.append(f"     Incluir reducción de Knowledge Debt ({knowledge_debt}/100) como ítem de sprint en el próximo ciclo.")
+    if missing_cats_count > 0:
+        parts.append(f"     Planificar la creación de contenido para {missing_cats_count} categoría(s) sin cobertura.")
+    parts.append("     Priorizar el backlog de mejoras usando el ranking de ROI de este reporte.")
+    parts.append("")
+
+    parts.append("  👤 Administrador de FIN")
+    if total_a_blocked > 0:
+        parts.append(f"     Identificar y reescribir los {total_a_blocked} artículo(s) bloqueados esta semana.")
+    if total_g_conflicts > 0:
+        parts.append(f"     Resolver los {total_g_conflicts} conflicto(s) entre guidelines antes de la próxima carga de contenido.")
+    if total_a_dups > 0:
+        parts.append(f"     Consolidar los {total_a_dups} par(es) de artículos duplicados para eliminar inconsistencias.")
+    if total_a_blocked == 0 and total_g_conflicts == 0 and total_a_dups == 0:
+        parts.append("     Implementar el proceso de versionado y auditoría periódica del repositorio.")
+    parts.append("")
+
+    parts.append("  👤 Equipo de Knowledge")
+    if missing_cats_count > 0:
+        parts.append(f"     Redactar artículos para las {missing_cats_count} categoría(s) sin cobertura: {missing_cats_str[:60]}.")
+    if total_a_blocked > 0:
+        parts.append("     Al reescribir artículos bloqueados: asegurar secciones de objetivo, pasos, resultado y escalamiento.")
+    parts.append("     Adoptar la herramienta optimize_article para garantizar calidad estructural antes de publicar.")
+    parts.append("")
+
+    parts.append("  👤 Equipo de Producto")
+    parts.append("     Definir los SLA de calidad del repositorio: health mínimo aceptable, Knowledge Debt máximo tolerable.")
+    parts.append("     Integrar audit_knowledge y knowledge_review en el proceso de aprobación de nuevos contenidos.")
+    if global_health < 85:
+        parts.append(f"     Establecer objetivo de health score ≥ 85/100 (actual: {global_health}/100) como meta de producto.")
+    parts.append("")
+
+    # RIESGOS
+    parts += [div1, "RIESGOS SI NO SE IMPLEMENTAN LAS RECOMENDACIONES", div1, ""]
+    for i, risk in enumerate(risks, 1):
+        parts.append(f"  ⚠️  Riesgo {i}")
+        parts.append(f"     {risk}")
+        parts.append("")
+
+    # CONCLUSIÓN
+    parts += [div2, "CONCLUSIÓN", div2, ""]
+    if top10:
+        best = top10[0]
+        parts.append(f"  🏆 Mejor inversión de tiempo para mejorar FIN:")
+        parts.append(f"     «{best['nombre']}»")
+        parts.append("")
+        parts.append(f"     {best['reason']}")
+        parts.append("")
+        parts.append(f"     Con ROI {best['roi']} es la acción que ofrece el mayor retorno relativo al esfuerzo requerido.")
+        if sim3["health_delta"] > 0:
+            parts.append(f"     Solo el Top 3 elevaría la salud del repositorio de {global_health} a {sim3['health']}/100.")
+    else:
+        parts.append("  El repositorio no presenta problemas críticos. La mejor inversión es mantener el proceso de revisión periódica.")
+    parts.append("")
+    parts.append(sep)
+
+    return "\n".join(parts)
+
+
+@mcp.tool()
 async def score_guideline(
     guideline: str,
     product: str = "general",
