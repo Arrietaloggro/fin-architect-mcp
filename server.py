@@ -32,14 +32,7 @@ async def audit_guideline(
             "La guideline es demasiado corta para ser accionable."
         )
 
-    keywords_ambiguous = [
-        "siempre",
-        "nunca",
-        "todos",
-        "ninguno"
-    ]
-
-    for word in keywords_ambiguous:
+    for word in _de.ABSOLUTE_TERMS:
         if word in guideline.lower():
             issues.append(
                 f"Término absoluto detectado: '{word}'. Considera añadir condiciones."
