@@ -672,7 +672,9 @@ async def audit_knowledge(
     Evalúa claridad, estructura, pasos, cobertura, ambigüedad, longitud,
     consistencia, terminología, usabilidad por FIN, escalamiento,
     mantenibilidad y riesgo. Genera health score 0–100, fortalezas,
-    problemas, riesgos, recomendaciones y versión optimizada del artículo.
+    problemas, riesgos, recomendaciones, capacidad de resolución,
+    preparación para automatización, riesgo de loop, decisión de despliegue
+    y versión optimizada del artículo lista para publicación.
     """
 
     import re as _re
@@ -1075,7 +1077,7 @@ async def audit_knowledge(
     # ────────────────────────────────────────────────────────────────────── #
     # 12. RIESGO OPERATIVO (7 pts)                                           #
     # ────────────────────────────────────────────────────────────────────── #
-    operational_risk = 7
+    operational_risk_score = 7
 
     risky_actions = [
         "eliminar", "borrar", "formatear", "reinstalar", "resetear a fábrica",
@@ -1085,7 +1087,7 @@ async def audit_knowledge(
     risky_hits = [r for r in risky_actions if r in text_lower]
 
     if risky_hits:
-        operational_risk -= min(len(risky_hits) * 2, 5)
+        operational_risk_score -= min(len(risky_hits) * 2, 5)
         problems.append(
             f"Acciones de alto riesgo detectadas: {', '.join(repr(r) for r in risky_hits[:4])}. "
             "Si FIN las guía sin advertencia previa, puede generar pérdida de datos."
@@ -1105,7 +1107,7 @@ async def audit_knowledge(
     else:
         strengths.append("Sin acciones de alto riesgo operativo detectadas.")
 
-    operational_risk = max(operational_risk, 0)
+    operational_risk_score = max(operational_risk_score, 0)
 
     # ────────────────────────────────────────────────────────────────────── #
     # SCORE FINAL                                                            #
@@ -1122,7 +1124,7 @@ async def audit_knowledge(
         + fin_usability
         + escalation_score
         + maintainability
-        + operational_risk
+        + operational_risk_score
     )
 
     total = max(0, min(100, total))
@@ -1170,12 +1172,307 @@ async def audit_knowledge(
                 "sin una revisión y optimización significativa."
             )
 
-    # ────────────────────────────────────────────────────────────────────── #
-    # GENERACIÓN DE VERSIÓN OPTIMIZADA                                       #
-    # ────────────────────────────────────────────────────────────────────── #
+    # ════════════════════════════════════════════════════════════════════════ #
+    # CAPACIDADES v2 — AUDITOR ESPECIALIZADO PARA IA CONVERSACIONAL           #
+    # ════════════════════════════════════════════════════════════════════════ #
+
+    # ── A. LOOP RISK ─────────────────────────────────────────────────────── #
+    loop_patterns = [
+        "vuelve a intentar", "consulta nuevamente este artículo",
+        "reinicia nuevamente", "repite los pasos", "inténtalo otra vez",
+        "vuelve a reiniciar", "vuelve a intentar el procedimiento",
+        "repite el procedimiento", "intenta de nuevo", "vuelve a empezar",
+    ]
+    loop_hits = [p for p in loop_patterns if p in text_lower]
+    loop_count = len(loop_hits)
+
+    implicit_loop = bool(_re.search(
+        r'(vuelve al paso|regresa al paso|repite desde el paso|vuelve a la sección)',
+        text_lower
+    ))
+    if implicit_loop:
+        loop_count += 1
+        loop_hits.append("referencia circular entre pasos")
+
+    if loop_count == 0:
+        loop_risk_level = "BAJO"
+        loop_risk_emoji = "🟢"
+        loop_risk_cause = "No se detectaron patrones de bucle. FIN puede guiar sin riesgo de repetición infinita."
+    elif loop_count == 1:
+        loop_risk_level = "MEDIO"
+        loop_risk_emoji = "⚠️"
+        loop_risk_cause = (
+            f"Se detectó 1 patrón de bucle: '{loop_hits[0]}'. "
+            "FIN podría entrar en un ciclo repetitivo si el usuario no logra resolver."
+        )
+    elif loop_count <= 3:
+        loop_risk_level = "ALTO"
+        loop_risk_emoji = "🔶"
+        loop_risk_cause = (
+            f"Se detectaron {loop_count} patrones de bucle: {', '.join(repr(h) for h in loop_hits[:3])}. "
+            "Alta probabilidad de que FIN repita instrucciones sin avanzar hacia resolución."
+        )
+    else:
+        loop_risk_level = "CRÍTICO"
+        loop_risk_emoji = "🔴"
+        loop_risk_cause = (
+            f"Se detectaron {loop_count} patrones de bucle ({', '.join(repr(h) for h in loop_hits[:4])}...). "
+            "El artículo crea un laberinto instruccional: FIN no puede romper el ciclo de forma autónoma."
+        )
+
+    # ── B. CAPACIDAD DE RESOLUCIÓN (0–100%) ──────────────────────────────── #
+    _rc_clarity    = clarity           / 12.0
+    _rc_steps      = steps_score       / 12.0
+    _rc_coverage   = coverage          / 8.0
+    _rc_ambiguity  = ambiguity         / 10.0
+    _rc_fin        = fin_usability     / 10.0
+    _rc_escalation = escalation_score  / 8.0
+
+    resolution_pct = round(
+        (_rc_clarity * 0.20 + _rc_steps * 0.25 + _rc_coverage * 0.15
+         + _rc_ambiguity * 0.15 + _rc_fin * 0.15 + _rc_escalation * 0.10) * 100
+    )
+
+    if loop_risk_level == "CRÍTICO":
+        resolution_pct = max(0, resolution_pct - 30)
+    elif loop_risk_level == "ALTO":
+        resolution_pct = max(0, resolution_pct - 15)
+    elif loop_risk_level == "MEDIO":
+        resolution_pct = max(0, resolution_pct - 5)
+
+    if fin_blocker_hits:
+        resolution_pct = max(0, resolution_pct - min(len(fin_blocker_hits) * 10, 20))
+
+    resolution_pct = min(100, resolution_pct)
+
+    res_factors = []
+    if _rc_clarity < 0.6:
+        res_factors.append("claridad insuficiente")
+    if _rc_steps < 0.6:
+        res_factors.append("pasos incompletos o sin verbos de acción")
+    if _rc_coverage < 0.6:
+        res_factors.append("cobertura temática parcial")
+    if _rc_ambiguity < 0.6:
+        res_factors.append("ambigüedad alta o términos absolutos")
+    if _rc_fin < 0.6:
+        res_factors.append("señales de guía para FIN insuficientes")
+    if _rc_escalation < 0.6:
+        res_factors.append("criterio de escalamiento ausente o débil")
+    if loop_risk_level in ("ALTO", "CRÍTICO"):
+        res_factors.append(f"riesgo de loop {loop_risk_level.lower()}")
+    if fin_blocker_hits:
+        res_factors.append("acciones no ejecutables por FIN presentes")
+
+    if resolution_pct >= 80:
+        resolution_label = "Alta"
+        resolution_explanation = (
+            f"FIN puede resolver de forma autónoma con alta probabilidad ({resolution_pct}%). "
+            "El artículo provee guía clara, pasos accionables y criterio de escalamiento."
+        )
+    elif resolution_pct >= 60:
+        resolution_label = "Media"
+        resolution_explanation = (
+            f"FIN puede resolver parcialmente ({resolution_pct}%). "
+            + (f"Factores limitantes: {', '.join(res_factors)}." if res_factors else "Aplicar optimizaciones recomendadas.")
+        )
+    elif resolution_pct >= 40:
+        resolution_label = "Baja"
+        resolution_explanation = (
+            f"FIN tiene capacidad limitada de resolución ({resolution_pct}%). "
+            + (f"Problemas principales: {', '.join(res_factors)}." if res_factors else "Requiere revisión completa.")
+        )
+    else:
+        resolution_label = "Muy baja"
+        resolution_explanation = (
+            f"FIN no puede resolver de forma autónoma con este artículo ({resolution_pct}%). "
+            + (f"Bloqueadores: {', '.join(res_factors)}." if res_factors else "Artículo requiere reescritura.")
+        )
+
+    # ── C. AUTOMATION READINESS ───────────────────────────────────────────── #
+    if total >= 78 and loop_risk_level == "BAJO" and has_escalation:
+        automation_readiness = "Excelente"
+        automation_emoji     = "✅"
+        automation_justif    = (
+            "El artículo cumple todos los criterios para uso autónomo por FIN: "
+            "health score alto, sin riesgo de loop y criterio de escalamiento definido."
+        )
+    elif total >= 65 and loop_risk_level in ("BAJO", "MEDIO"):
+        automation_readiness = "Alta"
+        automation_emoji     = "🟢"
+        automation_justif    = (
+            "El artículo es apto para automatización con ajustes menores. "
+            "Aplicar recomendaciones antes de activarlo en producción."
+        )
+    elif total >= 50 and loop_risk_level != "CRÍTICO":
+        automation_readiness = "Media"
+        automation_emoji     = "🔵"
+        automation_justif    = (
+            "FIN puede usar este artículo con supervisión activa. "
+            "Se recomienda revisión humana de los casos que FIN no resuelva en el primer intento."
+        )
+    elif total >= 35:
+        automation_readiness = "Baja"
+        automation_emoji     = "🔶"
+        automation_justif    = (
+            "El artículo presenta riesgos significativos para uso autónomo. "
+            "Requiere corrección de problemas detectados antes de cualquier despliegue."
+        )
+    else:
+        automation_readiness = "No apto"
+        automation_emoji     = "🔴"
+        automation_justif    = (
+            "El artículo no debe usarse como fuente de resolución autónoma. "
+            "Requiere reescritura completa para ser considerado para despliegue."
+        )
+
+    # ── D. ESCALATION READINESS ───────────────────────────────────────────── #
+    escalation_issues   = []
+    escalation_recs_ext = []
+
+    if not has_escalation:
+        escalation_issues.append("Ausencia total de criterio de escalamiento.")
+        escalation_recs_ext.append(
+            "Agrega un bloque de escalamiento explícito al final del artículo con condición, canal y datos requeridos."
+        )
+    elif has_escalation and not any(
+        c in text_lower for c in ["si el problema persiste", "si no se resuelve",
+                                    "si el error continúa", "si ninguno de los pasos"]
+    ):
+        escalation_issues.append("Escalamiento mencionado pero sin condición clara que active la transferencia.")
+        escalation_recs_ext.append(
+            "Define la condición exacta bajo la cual FIN debe transferir: "
+            "'Si el problema persiste luego de X pasos, escala con: [datos]'."
+        )
+
+    if absolute_hits:
+        esc_absolute = [t for t in absolute_hits if t in ["nunca", "ninguno"]]
+        if esc_absolute:
+            escalation_issues.append(
+                f"Reglas absolutas anti-escalamiento detectadas: {esc_absolute}. "
+                "FIN podría bloquearse y no escalar cuando es necesario."
+            )
+            escalation_recs_ext.append(
+                "Elimina reglas absolutas como 'nunca escalar' y reemplaza con condiciones específicas."
+            )
+
+    if vague_hits and has_escalation:
+        escalation_issues.append(
+            "Criterio de escalamiento en contexto de redacción ambigua. "
+            "FIN puede no identificar cuándo aplicar el escalamiento."
+        )
+        escalation_recs_ext.append(
+            "Clarifica el criterio de escalamiento con condiciones verificables y explícitas."
+        )
+
+    if not has_escalation and loop_risk_level in ("ALTO", "CRÍTICO"):
+        escalation_issues.append(
+            "Sin escalamiento y con riesgo de loop: FIN puede quedar atrapado repitiendo pasos indefinidamente."
+        )
+        escalation_recs_ext.append(
+            "Añade criterio de escalamiento inmediato si el usuario reporta que ya intentó el proceso."
+        )
+
+    if not escalation_issues:
+        escalation_readiness_label = "Adecuada"
+        escalation_readiness_emoji = "✅"
+    elif len(escalation_issues) == 1:
+        escalation_readiness_label = "Parcial"
+        escalation_readiness_emoji = "⚠️"
+    else:
+        escalation_readiness_label = "Deficiente"
+        escalation_readiness_emoji = "🔴"
+
+    # ── E. RIESGO OPERATIVO EXPANDIDO ────────────────────────────────────── #
+    op_risk_items = []
+
+    if not has_escalation:
+        op_risk_items.append(
+            "Usuarios pueden quedar bloqueados sin instrucción de salida: "
+            "FIN no tiene criterio para transferir al soporte humano."
+        )
+    if loop_risk_level in ("ALTO", "CRÍTICO"):
+        op_risk_items.append(
+            "Escalamientos repetitivos e innecesarios: FIN puede repetir los mismos pasos "
+            "múltiples veces sin avanzar, generando frustración y escalamientos evitables."
+        )
+    if internal_contradiction:
+        op_risk_items.append(
+            "Respuestas inconsistentes entre sesiones: las contradicciones internas pueden llevar "
+            "a FIN a dar instrucciones opuestas en distintas conversaciones."
+        )
+    if loop_risk_level == "CRÍTICO":
+        op_risk_items.append(
+            "Respuestas repetitivas que impiden resolución autónoma: "
+            "el artículo no tiene mecanismo de salida del bucle instruccional."
+        )
+    if fin_blocker_hits:
+        op_risk_items.append(
+            "Prevención de resolución autónoma: el artículo requiere acciones de administrador "
+            "que FIN no puede realizar, bloqueando la resolución sin transferencia explícita."
+        )
+
+    # ── F. HEALTH SCORE BREAKDOWN ─────────────────────────────────────────── #
+    hs_breakdown = [
+        ("Claridad",         clarity,                  12),
+        ("Estructura",       structure,                10),
+        ("Pasos",            steps_score,              12),
+        ("Cobertura",        coverage,                  8),
+        ("Ambigüedad",       ambiguity,                10),
+        ("Longitud",         length_score,              8),
+        ("Consistencia",     consistency,               8),
+        ("Terminología",     terminology,               8),
+        ("Uso por FIN",      fin_usability,            10),
+        ("Escalamiento",     escalation_score,          8),
+        ("Mantenibilidad",   maintainability,           7),
+        ("Riesgo operativo", operational_risk_score,    7),
+    ]
+
+    # ── G. DEPLOYMENT DECISION ────────────────────────────────────────────── #
+    _anti_escalation_absolute = (
+        bool(absolute_hits) and any(t in absolute_hits for t in ["nunca", "ninguno"])
+        and not has_escalation
+    )
+    if loop_risk_level == "CRÍTICO" or _anti_escalation_absolute:
+        deploy_decision = "BLOQUEADO"
+        deploy_emoji    = "🚫"
+        _parts_motivo   = []
+        if loop_risk_level == "CRÍTICO":
+            _parts_motivo.append("riesgo de loop CRÍTICO detectado")
+        if _anti_escalation_absolute:
+            _parts_motivo.append("reglas absolutas anti-escalamiento")
+        deploy_motivo = (
+            "El artículo presenta bloqueadores críticos que impiden cualquier despliegue: "
+            + " y ".join(_parts_motivo)
+            + ". Estos problemas deben resolverse antes de considerar cualquier uso por FIN."
+        )
+    elif total < 50:
+        deploy_decision = "NO LISTO"
+        deploy_emoji    = "🔴"
+        deploy_motivo   = (
+            f"Health score insuficiente ({total}/100). El artículo no cumple el mínimo de calidad "
+            "para ser utilizado como fuente de resolución autónoma. "
+            "Aplica las recomendaciones y re-audita antes de considerar el despliegue."
+        )
+    elif total < 78:
+        deploy_decision = "LISTO CON RECOMENDACIONES"
+        deploy_emoji    = "⚠️"
+        deploy_motivo   = (
+            f"El artículo puede desplegarse con precaución (score {total}/100). "
+            "Se recomienda aplicar las optimizaciones indicadas antes del despliegue en producción. "
+            "Monitorear las primeras interacciones de FIN con este artículo."
+        )
+    else:
+        deploy_decision = "LISTO"
+        deploy_emoji    = "✅"
+        deploy_motivo   = (
+            f"El artículo cumple los estándares de calidad para despliegue autónomo "
+            f"(score {total}/100 — {classification}). "
+            "FIN puede utilizarlo como fuente de resolución sin supervisión activa."
+        )
+
+    # ── H. VERSIÓN OPTIMIZADA ─────────────────────────────────────────────── #
     optimized = text
 
-    # Reemplazar términos absolutos
     abs_replacements = {
         "siempre ": "en los casos definidos, ",
         "Siempre ": "En los casos definidos, ",
@@ -1187,7 +1484,6 @@ async def audit_knowledge(
         if old in optimized:
             optimized = optimized.replace(old, new)
 
-    # Reemplazar frases vagas
     vague_replacements = {
         "de alguna manera":  "siguiendo los pasos indicados",
         "como sea posible":  "dentro del proceso definido",
@@ -1201,7 +1497,15 @@ async def audit_knowledge(
         if old.lower() in optimized.lower():
             optimized = _re.sub(_re.escape(old), new, optimized, flags=_re.IGNORECASE)
 
-    # Agregar escalamiento al final si no existe
+    for lp in loop_patterns:
+        if lp in optimized.lower():
+            optimized = _re.sub(
+                _re.escape(lp),
+                "escala al agente humano si el problema persiste",
+                optimized,
+                flags=_re.IGNORECASE,
+            )
+
     if not has_escalation:
         optimized += (
             "\n\n**Si el problema persiste luego de seguir estos pasos:**\n"
@@ -1209,11 +1513,58 @@ async def audit_knowledge(
             "pasos realizados y resultado obtenido."
         )
 
-    # Agregar estructura si el artículo no tiene pasos numerados y tiene suficiente contenido
     if not has_numbered_steps and word_count >= 40:
-        optimized = (
-            "**Pasos para resolver:**\n\n"
-            + optimized
+        optimized = "**Pasos para resolver:**\n\n" + optimized
+
+    # ── I. RESUMEN EJECUTIVO ──────────────────────────────────────────────── #
+    if deploy_decision == "LISTO":
+        exec_q1 = f"Sí. El artículo está listo para uso autónomo por FIN (score {total}/100, {classification})."
+    elif deploy_decision == "LISTO CON RECOMENDACIONES":
+        exec_q1 = (
+            f"Con precaución. FIN puede usarlo (score {total}/100) "
+            "si se aplican las recomendaciones antes del despliegue."
+        )
+    elif deploy_decision == "NO LISTO":
+        exec_q1 = f"No todavía. Score insuficiente ({total}/100). Requiere optimización antes del despliegue."
+    else:
+        exec_q1 = "No. El artículo está BLOQUEADO por problemas críticos que deben resolverse primero."
+
+    if loop_risk_level == "CRÍTICO":
+        exec_q2 = "Riesgo principal: loop instruccional CRÍTICO. FIN puede repetir instrucciones indefinidamente sin resolver."
+    elif not has_escalation:
+        exec_q2 = "Riesgo principal: ausencia de criterio de escalamiento. FIN no sabe cuándo transferir al agente humano."
+    elif absolute_hits:
+        exec_q2 = f"Riesgo principal: términos absolutos ({', '.join(absolute_hits[:2])}) que pueden bloquear la lógica de FIN."
+    elif fin_blocker_hits:
+        exec_q2 = "Riesgo principal: acciones de administrador que FIN no puede ejecutar, bloqueando la resolución."
+    elif risk_level == "BAJO":
+        exec_q2 = "Riesgo principal: bajo. El artículo presenta condiciones estables para uso autónomo."
+    else:
+        exec_q2 = f"Riesgo principal: calidad general del artículo ({total}/100). Aplicar recomendaciones."
+
+    if loop_risk_level in ("CRÍTICO", "ALTO"):
+        exec_q3 = "Prioridad 1: eliminar patrones de bucle y añadir criterio de escalamiento condicional."
+    elif not has_escalation:
+        exec_q3 = "Prioridad 1: agregar bloque de escalamiento explícito con condición, canal y datos requeridos."
+    elif absolute_hits:
+        exec_q3 = f"Prioridad 1: reemplazar términos absolutos ({', '.join(absolute_hits[:2])}) por condiciones específicas."
+    elif not step_hits:
+        exec_q3 = "Prioridad 1: añadir verbos de acción concretos en los pasos para que FIN pueda guiar paso a paso."
+    elif problems:
+        exec_q3 = f"Prioridad 1: {problems[0][:100]}"
+    else:
+        exec_q3 = "Prioridad 1: el artículo no tiene problemas críticos pendientes."
+
+    potential = min(100, total + len(recommendations) * 5 + (20 if loop_risk_level in ("ALTO", "CRÍTICO") else 0))
+    if potential >= 78:
+        exec_q4 = (
+            f"Si se aplican las {len(recommendations)} recomendaciones, el artículo podría alcanzar ~{potential}/100, "
+            "habilitando uso autónomo completo por FIN."
+        )
+    else:
+        exec_q4 = (
+            f"Aplicando las recomendaciones se espera mejorar el score a ~{potential}/100. "
+            "Se requiere revisión adicional para alcanzar el umbral de despliegue autónomo (78+)."
         )
 
     # ────────────────────────────────────────────────────────────────────── #
@@ -1227,32 +1578,109 @@ async def audit_knowledge(
         dots = "." * max(1, 22 - len(label))
         return f"  {label} {dots} {score}/{max_score}"
 
+    def hs_row(label, score, max_score):
+        earned   = score
+        lost     = max_score - earned
+        pct      = round(earned / max_score * 100) if max_score else 0
+        bar_full = round(pct / 10)
+        bar      = "█" * bar_full + "░" * (10 - bar_full)
+        sign     = f"+{earned}" if earned == max_score else f"+{earned}/-{lost}"
+        dots     = "." * max(1, 20 - len(label))
+        return f"  {label} {dots} [{bar}] {sign} ({pct}%)"
+
     parts = []
 
     # HEADER
-    parts += [sep, "AUDIT KNOWLEDGE — FIN Knowledge Core", sep, ""]
+    parts += [sep, "AUDIT KNOWLEDGE v2 — FIN Knowledge Core", sep, ""]
     parts.append(f"PRODUCTO: {product.upper()}")
     parts.append(f"HEALTH SCORE: {class_emoji} {total}/100 — {classification}")
-    parts.append(f"RIESGO: {risk_level}")
+    parts.append(f"RIESGO GLOBAL: {risk_level}")
     if context:
         parts.append(f"CONTEXTO: {context}")
     parts.append(f"LONGITUD: {word_count} palabras  |  SECCIONES: {len(lines)} líneas")
     parts.append("")
 
-    # DESGLOSE
+    # RESUMEN EJECUTIVO
+    parts += [div2, "RESUMEN EJECUTIVO", div2, ""]
+    parts.append("  1. ¿Puede FIN usar este artículo?")
+    parts.append(f"     {exec_q1}")
+    parts.append("  2. ¿Cuál es el riesgo principal?")
+    parts.append(f"     {exec_q2}")
+    parts.append("  3. ¿Qué corregir primero?")
+    parts.append(f"     {exec_q3}")
+    parts.append("  4. ¿Cuál es el impacto esperado si se optimiza?")
+    parts.append(f"     {exec_q4}")
+    parts.append("")
+
+    # DECISIÓN DE DESPLIEGUE
+    parts += [div2, "DECISIÓN DE DESPLIEGUE", div2, ""]
+    parts.append(f"  {deploy_emoji} {deploy_decision}")
+    parts.append(f"  {deploy_motivo}")
+    parts.append("")
+
+    # CAPACIDAD DE RESOLUCIÓN
+    parts += [div3, "CAPACIDAD DE RESOLUCIÓN", div3, ""]
+    parts.append(f"  Probabilidad de resolución autónoma: {resolution_pct}% — {resolution_label}")
+    parts.append(f"  {resolution_explanation}")
+    parts.append("")
+
+    # AUTOMATION READINESS
+    parts += [div3, "AUTOMATION READINESS", div3, ""]
+    parts.append(f"  {automation_emoji} {automation_readiness}")
+    parts.append(f"  {automation_justif}")
+    parts.append("")
+
+    # ESCALATION READINESS
+    parts += [div3, "ESCALATION READINESS", div3, ""]
+    parts.append(f"  {escalation_readiness_emoji} {escalation_readiness_label}")
+    if escalation_issues:
+        for ei in escalation_issues:
+            parts.append(f"  ⚠️  {ei}")
+        for er in escalation_recs_ext:
+            parts.append(f"  → {er}")
+    else:
+        parts.append("  ✓ El artículo define correctamente cuándo y cómo FIN debe escalar.")
+    parts.append("")
+
+    # LOOP RISK
+    parts += [div3, "LOOP RISK", div3, ""]
+    parts.append(f"  {loop_risk_emoji} {loop_risk_level}")
+    parts.append(f"  {loop_risk_cause}")
+    if loop_hits:
+        parts.append(f"  Patrones detectados: {', '.join(repr(h) for h in loop_hits[:5])}")
+    parts.append("")
+
+    # RIESGO OPERATIVO EXPANDIDO
+    parts += [div3, "RIESGO OPERATIVO", div3, ""]
+    if op_risk_items:
+        for ori in op_risk_items:
+            parts.append(f"  🔴 {ori}")
+    else:
+        parts.append("  ✓ No se identificaron riesgos operativos adicionales.")
+    parts.append("")
+
+    # HEALTH SCORE BREAKDOWN
+    parts += [div2, "HEALTH SCORE — DESGLOSE", div2, ""]
+    for lbl, sc, mx in hs_breakdown:
+        parts.append(hs_row(lbl, sc, mx))
+    parts.append(f"  {'─'*38}")
+    parts.append(f"  TOTAL {'.' * 28} {total}/100")
+    parts.append("")
+
+    # DESGLOSE NUMÉRICO
     parts += [div2, "DESGLOSE DE CRITERIOS", div2, ""]
-    parts.append(row("Claridad",            clarity,          12))
-    parts.append(row("Estructura",          structure,        10))
-    parts.append(row("Pasos",               steps_score,      12))
-    parts.append(row("Cobertura",           coverage,          8))
-    parts.append(row("Ambigüedad",          ambiguity,        10))
-    parts.append(row("Longitud",            length_score,      8))
-    parts.append(row("Consistencia",        consistency,       8))
-    parts.append(row("Terminología",        terminology,       8))
-    parts.append(row("Uso por FIN",         fin_usability,    10))
-    parts.append(row("Escalamiento",        escalation_score,  8))
-    parts.append(row("Mantenibilidad",      maintainability,   7))
-    parts.append(row("Riesgo operativo",    operational_risk,  7))
+    parts.append(row("Claridad",            clarity,                  12))
+    parts.append(row("Estructura",          structure,                10))
+    parts.append(row("Pasos",               steps_score,              12))
+    parts.append(row("Cobertura",           coverage,                  8))
+    parts.append(row("Ambigüedad",          ambiguity,                10))
+    parts.append(row("Longitud",            length_score,              8))
+    parts.append(row("Consistencia",        consistency,               8))
+    parts.append(row("Terminología",        terminology,               8))
+    parts.append(row("Uso por FIN",         fin_usability,            10))
+    parts.append(row("Escalamiento",        escalation_score,          8))
+    parts.append(row("Mantenibilidad",      maintainability,           7))
+    parts.append(row("Riesgo operativo",    operational_risk_score,    7))
     parts.append(f"  {'─'*28}")
     parts.append(f"  TOTAL {'.' * 16} {total}/100")
     parts.append("")
@@ -1279,6 +1707,7 @@ async def audit_knowledge(
         "Artículo demasiado corto": lambda: word_count < 30,
         "Acciones no ejecutables por FIN": lambda: bool(fin_blocker_hits),
         "Sin criterio de escalamiento": lambda: not has_escalation,
+        "Loop risk detectado": lambda: loop_count > 0,
     }
     detected_labels = [lbl for lbl, check in _problem_labels.items() if check()]
     if detected_labels:
@@ -1302,7 +1731,6 @@ async def audit_knowledge(
 
     # RECOMENDACIONES
     parts += [div3, "RECOMENDACIONES", div3, ""]
-    # Dedup
     seen_recs = set()
     unique_recs = []
     for rec in recommendations:
@@ -1315,26 +1743,6 @@ async def audit_knowledge(
             parts.append(f"  {i}. {rec}")
     else:
         parts.append("  — No se generaron recomendaciones adicionales.")
-    parts.append("")
-
-    # VEREDICTO FINAL
-    parts += [div2, "VEREDICTO FINAL", div2, ""]
-    if total >= 78:
-        veredicto = (
-            f"El artículo está en condiciones de ser utilizado por FIN como fuente de resolución autónoma. "
-            f"Score {total}/100 — {classification}."
-        )
-    elif total >= 50:
-        veredicto = (
-            f"El artículo puede utilizarse con precaución. Aplicar las recomendaciones antes del despliegue. "
-            f"Score {total}/100 — {classification}."
-        )
-    else:
-        veredicto = (
-            f"El artículo NO debe utilizarse como fuente de resolución autónoma en su estado actual. "
-            f"Requiere optimización significativa. Score {total}/100 — {classification}."
-        )
-    parts.append(f"  {veredicto}")
     parts.append("")
 
     # VERSIÓN OPTIMIZADA
