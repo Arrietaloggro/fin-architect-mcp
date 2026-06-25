@@ -655,6 +655,697 @@ async def detect_conflicts(
     return "\n".join(result_parts)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# FIN KNOWLEDGE CORE — Fase 2
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def audit_knowledge(
+    article: str,
+    product: str = "general",
+    context: str = ""
+) -> str:
+    """
+    Audita un artículo de Base de Conocimiento y determina qué tan adecuado
+    es para ser utilizado por FIN como fuente de resolución autónoma.
+    Evalúa claridad, estructura, pasos, cobertura, ambigüedad, longitud,
+    consistencia, terminología, usabilidad por FIN, escalamiento,
+    mantenibilidad y riesgo. Genera health score 0–100, fortalezas,
+    problemas, riesgos, recomendaciones y versión optimizada del artículo.
+    """
+
+    import re as _re
+
+    text       = article.strip()
+    text_lower = text.lower()
+    words      = text.split()
+    word_count = len(words)
+    sentences  = [s.strip() for s in _re.split(r'[.!?]+', text) if s.strip()]
+    lines      = [l.strip() for l in text.splitlines() if l.strip()]
+
+    strengths        = []
+    problems         = []
+    risks            = []
+    recommendations  = []
+    auto_fixes       = []   # pairs (original_fragment, improved_fragment) for optimized version
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 1. CLARIDAD (12 pts)                                                   #
+    # ────────────────────────────────────────────────────────────────────── #
+    clarity = 12
+
+    vague_phrases = [
+        "de alguna manera", "como sea posible", "en la medida",
+        "según corresponda", "a discreción", "podría", "quizás",
+        "tal vez", "depende", "en algunos casos", "eventualmente",
+        "normalmente", "generalmente", "usualmente",
+    ]
+    vague_hits = [p for p in vague_phrases if p in text_lower]
+    if vague_hits:
+        penalty = min(len(vague_hits) * 2, 8)
+        clarity -= penalty
+        problems.append(
+            f"Frases vagas que reducen la claridad para FIN: {', '.join(repr(p) for p in vague_hits[:4])}."
+        )
+        recommendations.append(
+            "Reemplaza las frases vagas por instrucciones concretas y verificables."
+        )
+    else:
+        strengths.append("Redacción clara: no se detectaron frases vagas o ambiguas.")
+
+    if word_count < 20:
+        clarity -= 5
+        problems.append("El artículo es demasiado corto para ser útil como fuente de resolución.")
+        recommendations.append("Amplía el artículo con pasos concretos y contexto de aplicación.")
+
+    clarity = max(clarity, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 2. ESTRUCTURA (10 pts)                                                 #
+    # ────────────────────────────────────────────────────────────────────── #
+    structure = 10
+
+    has_numbered_steps = bool(_re.search(r'(?:^|\n)\s*\d+[\.\)]\s+\S', text))
+    has_bullets        = bool(_re.search(r'(?:^|\n)\s*[-•*]\s+\S', text))
+    has_sections       = bool(_re.search(r'(?:^|\n)\s*#{1,3}\s+\S|(?:^|\n)[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{3,}:', text))
+
+    if has_numbered_steps:
+        strengths.append("Contiene pasos numerados: estructura fácil de seguir para FIN.")
+    else:
+        structure -= 4
+        problems.append("No se detectaron pasos numerados. FIN puede omitir pasos críticos.")
+        recommendations.append("Estructura el artículo con pasos numerados (1. 2. 3.).")
+
+    if has_sections:
+        strengths.append("Organizado en secciones: facilita la extracción de información por FIN.")
+    else:
+        structure -= 3
+        problems.append("El artículo carece de secciones o encabezados diferenciados.")
+        recommendations.append("Agrega encabezados o secciones (Causa, Solución, Escalamiento).")
+
+    if not has_bullets and not has_numbered_steps:
+        structure -= 3
+        problems.append("Sin lista de pasos ni viñetas: FIN puede confundirse al leer párrafos densos.")
+        recommendations.append("Usa listas con viñetas o pasos numerados para instrucciones.")
+
+    structure = max(structure, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 3. PASOS (12 pts)                                                      #
+    # ────────────────────────────────────────────────────────────────────── #
+    steps_score = 12
+
+    step_verbs_es = [
+        "hacer clic", "selecciona", "ingresa", "abre", "cierra", "navega",
+        "accede", "verifica", "confirma", "guarda", "descarga", "instala",
+        "actualiza", "reinicia", "copia", "pega", "escribe", "busca",
+        "haz clic", "pulsa", "presiona", "dirígete", "ve a", "entra",
+        "click", "ir a", "login", "inicia sesión",
+    ]
+
+    step_hits  = [v for v in step_verbs_es if v in text_lower]
+    step_count = len(_re.findall(r'(?:^|\n)\s*\d+[\.\)]\s+\S', text))
+
+    if not step_hits:
+        steps_score -= 7
+        problems.append("No se detectaron verbos de acción en los pasos. FIN no podrá guiar al usuario paso a paso.")
+        recommendations.append("Incluye verbos de acción concretos en cada paso (Selecciona, Haz clic, Ingresa...).")
+    elif len(step_hits) >= 3:
+        strengths.append(f"Pasos con verbos de acción claros ({', '.join(step_hits[:3])}).")
+
+    if step_count == 0 and word_count > 60:
+        steps_score -= 3
+        problems.append("El artículo tiene más de 60 palabras pero no estructura los pasos de forma numerada.")
+        recommendations.append("Numera los pasos para que FIN pueda seguirlos secuencialmente.")
+
+    # Detectar pasos ambiguos: oraciones sin verbo o demasiado cortas
+    ambiguous_steps = []
+    if has_numbered_steps:
+        numbered = _re.findall(r'(?:^|\n)\s*\d+[\.\)]\s+(.+)', text)
+        for step_text in numbered:
+            if len(step_text.split()) < 3:
+                ambiguous_steps.append(step_text.strip())
+    if ambiguous_steps:
+        steps_score -= min(len(ambiguous_steps) * 2, 4)
+        problems.append(f"Pasos ambiguos o demasiado cortos detectados: {ambiguous_steps[:3]}.")
+        recommendations.append("Expande los pasos cortos con contexto y resultado esperado.")
+
+    steps_score = max(steps_score, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 4. COBERTURA (8 pts)                                                   #
+    # ────────────────────────────────────────────────────────────────────── #
+    coverage = 8
+
+    coverage_signals = [
+        "causa", "síntoma", "solución", "resultado", "verificar", "error",
+        "problema", "cuándo", "prerequisito", "requisito", "nota", "importante",
+        "advertencia", "aviso", "ejemplo",
+    ]
+    cov_hits = [s for s in coverage_signals if s in text_lower]
+    if len(cov_hits) >= 4:
+        strengths.append(f"Buena cobertura temática: incluye {', '.join(cov_hits[:4])}.")
+    elif len(cov_hits) >= 2:
+        coverage -= 2
+        problems.append("Cobertura parcial: el artículo podría omitir causa, resultado o advertencias.")
+        recommendations.append("Añade secciones de Causa, Resultado esperado y Advertencias.")
+    else:
+        coverage -= 5
+        problems.append("Cobertura insuficiente: el artículo no menciona causa, solución ni resultado esperado.")
+        recommendations.append("Estructura el artículo con al menos: Causa, Pasos de solución, Resultado esperado.")
+
+    coverage = max(coverage, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 5. AMBIGÜEDAD (10 pts)                                                 #
+    # ────────────────────────────────────────────────────────────────────── #
+    ambiguity = 10
+
+    absolute_terms = ["siempre", "nunca", "todos", "ninguno", "cualquier caso"]
+    absolute_hits  = [t for t in absolute_terms if t in text_lower]
+    if absolute_hits:
+        penalty = min(len(absolute_hits) * 3, 8)
+        ambiguity -= penalty
+        problems.append(f"Términos absolutos sin condición: {', '.join(repr(t) for t in absolute_hits)}.")
+        recommendations.append("Reemplaza los términos absolutos por condiciones específicas y verificables.")
+
+    contradictions = [
+        ("activar", "desactivar"), ("habilitar", "deshabilitar"),
+        ("guardar", "no guardar"), ("cerrar", "no cerrar"),
+        ("contactar soporte", "no contactar soporte"),
+    ]
+    internal_contradiction = False
+    for a, b in contradictions:
+        if a in text_lower and b in text_lower:
+            internal_contradiction = True
+            problems.append(f"Posible contradicción interna: el artículo menciona '{a}' y '{b}' sin distinción clara.")
+            recommendations.append(f"Aclara en qué contexto aplicar '{a}' vs '{b}'.")
+    if not internal_contradiction and not absolute_hits:
+        strengths.append("Sin contradicciones internas ni términos absolutos detectados.")
+
+    ambiguity = max(ambiguity, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 6. LONGITUD (8 pts)                                                    #
+    # ────────────────────────────────────────────────────────────────────── #
+    length_score = 8
+
+    if word_count < 30:
+        length_score -= 6
+        problems.append(f"Artículo demasiado corto ({word_count} palabras). FIN no puede extraer pasos concretos.")
+        recommendations.append("El artículo debe tener al menos 80–200 palabras para ser procesable por FIN.")
+    elif word_count < 60:
+        length_score -= 3
+        problems.append(f"Artículo corto ({word_count} palabras). Puede carecer de contexto suficiente.")
+        recommendations.append("Amplía el artículo con ejemplos, causas y pasos adicionales.")
+    elif word_count > 800:
+        length_score -= 4
+        problems.append(f"Artículo muy extenso ({word_count} palabras). FIN puede perder el contexto relevante.")
+        recommendations.append("Divide el artículo en sub-artículos por escenario para facilitar la lectura de FIN.")
+    elif word_count > 400:
+        length_score -= 2
+        problems.append(f"Artículo extenso ({word_count} palabras). Considera dividirlo.")
+        recommendations.append("Verifica que cada sección sea independiente para que FIN pueda usarla de forma atómica.")
+    else:
+        strengths.append(f"Longitud adecuada ({word_count} palabras) para procesamiento por FIN.")
+
+    length_score = max(length_score, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 7. CONSISTENCIA (8 pts)                                                #
+    # ────────────────────────────────────────────────────────────────────── #
+    consistency = 8
+
+    # Detectar repeticiones de oraciones o fragmentos similares
+    sentence_words = [frozenset(s.lower().split()) for s in sentences if len(s.split()) >= 5]
+    repetitions = 0
+    seen_sents = []
+    for sw in sentence_words:
+        for prev in seen_sents:
+            if len(sw) > 0 and len(prev) > 0:
+                overlap = len(sw & prev) / max(len(sw), len(prev))
+                if overlap >= 0.80:
+                    repetitions += 1
+                    break
+        seen_sents.append(sw)
+
+    if repetitions > 0:
+        consistency -= min(repetitions * 3, 6)
+        problems.append(f"Se detectaron {repetitions} sección(es) con contenido repetido (similitud ≥ 80%).")
+        recommendations.append("Elimina o consolida las secciones repetidas para evitar confusión en FIN.")
+    else:
+        strengths.append("Sin repeticiones significativas de contenido detectadas.")
+
+    # Detectar mezcla de estilos (tuteo vs usted)
+    uses_tu     = bool(_re.search(r'\b(haz|selecciona|entra|ve a|escribe|abre)\b', text_lower))
+    uses_usted  = bool(_re.search(r'\b(haga|seleccione|entre|vaya|escriba|abra)\b', text_lower))
+    if uses_tu and uses_usted:
+        consistency -= 3
+        problems.append("El artículo mezcla tratamiento de 'tú' y 'usted'. Puede confundir a FIN.")
+        recommendations.append("Usa un único tratamiento (tú o usted) en todo el artículo.")
+
+    consistency = max(consistency, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 8. TERMINOLOGÍA (8 pts)                                                #
+    # ────────────────────────────────────────────────────────────────────── #
+    terminology = 8
+
+    # Términos técnicos sin glosario ni explicación
+    technical_terms = [
+        "api", "webhook", "endpoint", "token", "oauth", "json", "xml",
+        "cufe", "dian", "rut", "nit", "uuid", "erp", "crm", "ide",
+    ]
+    undefined_terms = [t for t in technical_terms if t in text_lower]
+
+    if undefined_terms:
+        has_definitions = any(
+            w in text_lower for w in ["significa", "es decir", "se refiere", "corresponde a", "definido como"]
+        )
+        if not has_definitions:
+            terminology -= min(len(undefined_terms) * 2, 6)
+            problems.append(
+                f"Términos técnicos sin definición detectados: {', '.join(undefined_terms[:5])}. "
+                "FIN puede no saber cómo explicárselos al usuario."
+            )
+            recommendations.append(
+                "Añade un glosario breve o explica los términos técnicos la primera vez que aparecen."
+            )
+        else:
+            strengths.append("Términos técnicos acompañados de explicaciones en el artículo.")
+    else:
+        strengths.append("Terminología accesible: no se requieren definiciones adicionales.")
+
+    # Términos en otro idioma sin traducción
+    english_terms = [w for w in words if _re.match(r'^[a-zA-Z]{4,}$', w) and w.lower() not in [
+        "cufe", "dian", "login", "error", "click", "api", "token", "json", "xml", "nit",
+    ]]
+    foreign_term_ratio = len(english_terms) / max(word_count, 1)
+    if foreign_term_ratio > 0.15:
+        terminology -= 2
+        problems.append(
+            f"Alto porcentaje de términos en otro idioma ({round(foreign_term_ratio*100)}%). "
+            "FIN puede tener dificultades para interpretar instrucciones mezcladas."
+        )
+        recommendations.append("Traduce o adapta los términos en otro idioma al español para facilitar el procesamiento.")
+
+    terminology = max(terminology, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 9. USO POR FIN (10 pts)                                                #
+    # ────────────────────────────────────────────────────────────────────── #
+    fin_usability = 10
+
+    # Señales de que FIN puede ejecutarlo de forma autónoma
+    fin_positive = [
+        "el usuario debe", "el cliente debe", "verifique", "confirme",
+        "paso", "primero", "luego", "después", "finalmente", "a continuación",
+        "si el error persiste", "si el problema continúa", "si no funciona",
+    ]
+    fin_positive_hits = [p for p in fin_positive if p in text_lower]
+
+    if not fin_positive_hits:
+        fin_usability -= 5
+        problems.append("El artículo no contiene señales de guía paso a paso que FIN pueda seguir autónomamente.")
+        recommendations.append("Redacta el artículo en segunda persona activa con condicionales claros para FIN.")
+    elif len(fin_positive_hits) >= 3:
+        strengths.append("El artículo está orientado a guiar al usuario paso a paso, ideal para FIN.")
+
+    # Señales de que FIN NO puede ejecutarlo (requiere acciones del sistema interno)
+    fin_blockers = [
+        "accede al panel de administración", "desde el backend", "en la consola de",
+        "modifica la base de datos", "ejecuta el script", "reinicia el servidor",
+        "contacta al equipo de desarrollo", "solicita al administrador del sistema",
+        "acceso de superusuario", "requiere acceso root",
+    ]
+    fin_blocker_hits = [b for b in fin_blockers if b in text_lower]
+    if fin_blocker_hits:
+        fin_usability -= min(len(fin_blocker_hits) * 3, 6)
+        problems.append(
+            f"El artículo contiene acciones que FIN no puede ejecutar: "
+            f"{', '.join(repr(b) for b in fin_blocker_hits[:3])}."
+        )
+        risks.append(
+            "FIN podría intentar guiar al usuario a través de pasos de administrador del sistema, "
+            "generando confusión o escalamientos innecesarios."
+        )
+        recommendations.append(
+            "Separa en un artículo diferente los pasos que requieren acceso de administrador "
+            "y agrega una instrucción de escalamiento explícita cuando FIN no pueda continuar."
+        )
+
+    fin_usability = max(fin_usability, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 10. ESCALAMIENTO (8 pts)                                               #
+    # ────────────────────────────────────────────────────────────────────── #
+    escalation_score = 8
+
+    escalation_signals = [
+        "escalar", "escala", "contacta a soporte", "contactar soporte",
+        "comunícate con", "transfiere", "agente", "asesor", "caso de soporte",
+        "ticket", "si el problema persiste", "si no se resuelve",
+    ]
+    has_escalation = any(e in text_lower for e in escalation_signals)
+
+    if has_escalation:
+        escalation_conditional = any(
+            c in text_lower for c in ["si el problema persiste", "si no se resuelve",
+                                       "si el error continúa", "si ninguno de los pasos"]
+        )
+        if escalation_conditional:
+            strengths.append("Incluye criterio de escalamiento condicional: FIN sabrá cuándo transferir.")
+        else:
+            escalation_score -= 4
+            problems.append("Menciona escalamiento pero sin condición clara. FIN puede escalar prematuramente.")
+            recommendations.append(
+                "Agrega una condición explícita de escalamiento: "
+                "'Si el problema persiste luego de los pasos anteriores, escala al agente.'"
+            )
+    else:
+        escalation_score -= 5
+        problems.append("El artículo no define cuándo escalar. FIN puede quedar sin instrucción al agotar los pasos.")
+        recommendations.append(
+            "Agrega al final: 'Si el problema persiste luego de seguir estos pasos, "
+            "el agente FIN debe transferir al soporte humano incluyendo: [descripción del error, pasos realizados].'"
+        )
+
+    escalation_score = max(escalation_score, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 11. MANTENIBILIDAD (7 pts)                                             #
+    # ────────────────────────────────────────────────────────────────────── #
+    maintainability = 7
+
+    date_patterns = [
+        _re.compile(r'\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+\d{4}\b', _re.I),
+        _re.compile(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b'),
+        _re.compile(r'\bversión\s+\d+[\.\d]*\b', _re.I),
+        _re.compile(r'\bv\d+[\.\d]+\b'),
+    ]
+    date_refs = []
+    for dp in date_patterns:
+        date_refs.extend(dp.findall(text))
+
+    if date_refs:
+        maintainability -= 3
+        problems.append(
+            f"Referencias a fechas o versiones específicas detectadas: {date_refs[:3]}. "
+            "El artículo puede desactualizarse rápidamente."
+        )
+        risks.append(
+            "Un artículo con fechas o versiones específicas puede llevar a FIN a dar "
+            "instrucciones desactualizadas al usuario."
+        )
+        recommendations.append(
+            "Remueve fechas específicas o agrega una nota de 'Última actualización'. "
+            "Usa referencias como 'versión actual' en lugar de números de versión fijos."
+        )
+    else:
+        strengths.append("Sin referencias a fechas o versiones que puedan desactualizar el artículo.")
+
+    if word_count > 400:
+        maintainability -= 2
+        problems.append("Artículos extensos son más difíciles de mantener actualizados.")
+        recommendations.append("Divide el artículo en sub-artículos para facilitar actualizaciones parciales.")
+
+    maintainability = max(maintainability, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # 12. RIESGO OPERATIVO (7 pts)                                           #
+    # ────────────────────────────────────────────────────────────────────── #
+    operational_risk = 7
+
+    risky_actions = [
+        "eliminar", "borrar", "formatear", "reinstalar", "resetear a fábrica",
+        "eliminar todos los datos", "vaciar la base", "truncar",
+        "desinstalar", "modificar permisos del sistema",
+    ]
+    risky_hits = [r for r in risky_actions if r in text_lower]
+
+    if risky_hits:
+        operational_risk -= min(len(risky_hits) * 2, 5)
+        problems.append(
+            f"Acciones de alto riesgo detectadas: {', '.join(repr(r) for r in risky_hits[:4])}. "
+            "Si FIN las guía sin advertencia previa, puede generar pérdida de datos."
+        )
+        risks.append(
+            "FIN podría guiar al usuario a través de acciones destructivas (eliminación de datos, "
+            "formateo) sin los controles de seguridad adecuados."
+        )
+        has_warning = any(w in text_lower for w in ["advertencia", "precaución", "importante", "nota", "atención"])
+        if not has_warning:
+            recommendations.append(
+                "Agrega una sección de ADVERTENCIA antes de los pasos destructivos, "
+                "indicando explícitamente qué datos se perderán y si el proceso es reversible."
+            )
+        else:
+            strengths.append("Incluye advertencias antes de acciones de alto riesgo.")
+    else:
+        strengths.append("Sin acciones de alto riesgo operativo detectadas.")
+
+    operational_risk = max(operational_risk, 0)
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # SCORE FINAL                                                            #
+    # ────────────────────────────────────────────────────────────────────── #
+    total = (
+        clarity
+        + structure
+        + steps_score
+        + coverage
+        + ambiguity
+        + length_score
+        + consistency
+        + terminology
+        + fin_usability
+        + escalation_score
+        + maintainability
+        + operational_risk
+    )
+
+    total = max(0, min(100, total))
+
+    # Clasificación
+    if total >= 90:
+        classification = "Excelente"
+        class_emoji   = "✅"
+    elif total >= 78:
+        classification = "Muy Bueno"
+        class_emoji   = "🟢"
+    elif total >= 65:
+        classification = "Bueno"
+        class_emoji   = "🔵"
+    elif total >= 50:
+        classification = "Aceptable"
+        class_emoji   = "⚠️"
+    elif total >= 35:
+        classification = "Deficiente"
+        class_emoji   = "🔶"
+    else:
+        classification = "Crítico"
+        class_emoji   = "🔴"
+
+    # Nivel de riesgo global
+    if total >= 78:
+        risk_level = "BAJO"
+    elif total >= 50:
+        risk_level = "MEDIO"
+    else:
+        risk_level = "ALTO"
+
+    # Riesgo global por defecto si no se generó ninguno
+    if not risks:
+        if total >= 78:
+            risks.append("Riesgo operativo bajo. El artículo es apto para uso por FIN sin restricciones.")
+        elif total >= 50:
+            risks.append(
+                "Riesgo medio. FIN puede usar este artículo con supervisión. "
+                "Aplicar las recomendaciones antes de desplegarlo en producción."
+            )
+        else:
+            risks.append(
+                "Riesgo alto. El artículo no debe usarse como fuente de resolución autónoma "
+                "sin una revisión y optimización significativa."
+            )
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # GENERACIÓN DE VERSIÓN OPTIMIZADA                                       #
+    # ────────────────────────────────────────────────────────────────────── #
+    optimized = text
+
+    # Reemplazar términos absolutos
+    abs_replacements = {
+        "siempre ": "en los casos definidos, ",
+        "Siempre ": "En los casos definidos, ",
+        "nunca ":   "solo en situaciones específicas, no ",
+        "Nunca ":   "Solo en situaciones específicas, no ",
+        "cualquier caso": "los casos que cumplan los criterios definidos",
+    }
+    for old, new in abs_replacements.items():
+        if old in optimized:
+            optimized = optimized.replace(old, new)
+
+    # Reemplazar frases vagas
+    vague_replacements = {
+        "de alguna manera":  "siguiendo los pasos indicados",
+        "como sea posible":  "dentro del proceso definido",
+        "según corresponda": "según el escenario del usuario",
+        "a discreción":      "según los criterios establecidos",
+        "generalmente":      "en la mayoría de los casos documentados",
+        "normalmente":       "en condiciones estándar",
+        "eventualmente":     "después de completar los pasos anteriores",
+    }
+    for old, new in vague_replacements.items():
+        if old.lower() in optimized.lower():
+            optimized = _re.sub(_re.escape(old), new, optimized, flags=_re.IGNORECASE)
+
+    # Agregar escalamiento al final si no existe
+    if not has_escalation:
+        optimized += (
+            "\n\n**Si el problema persiste luego de seguir estos pasos:**\n"
+            "Escala al agente humano incluyendo: descripción del error, "
+            "pasos realizados y resultado obtenido."
+        )
+
+    # Agregar estructura si el artículo no tiene pasos numerados y tiene suficiente contenido
+    if not has_numbered_steps and word_count >= 40:
+        optimized = (
+            "**Pasos para resolver:**\n\n"
+            + optimized
+        )
+
+    # ────────────────────────────────────────────────────────────────────── #
+    # CONSTRUCCIÓN DEL REPORTE                                               #
+    # ────────────────────────────────────────────────────────────────────── #
+    sep  = "=" * 48
+    div2 = "─" * 40
+    div3 = "·" * 40
+
+    def row(label, score, max_score):
+        dots = "." * max(1, 22 - len(label))
+        return f"  {label} {dots} {score}/{max_score}"
+
+    parts = []
+
+    # HEADER
+    parts += [sep, "AUDIT KNOWLEDGE — FIN Knowledge Core", sep, ""]
+    parts.append(f"PRODUCTO: {product.upper()}")
+    parts.append(f"HEALTH SCORE: {class_emoji} {total}/100 — {classification}")
+    parts.append(f"RIESGO: {risk_level}")
+    if context:
+        parts.append(f"CONTEXTO: {context}")
+    parts.append(f"LONGITUD: {word_count} palabras  |  SECCIONES: {len(lines)} líneas")
+    parts.append("")
+
+    # DESGLOSE
+    parts += [div2, "DESGLOSE DE CRITERIOS", div2, ""]
+    parts.append(row("Claridad",            clarity,          12))
+    parts.append(row("Estructura",          structure,        10))
+    parts.append(row("Pasos",               steps_score,      12))
+    parts.append(row("Cobertura",           coverage,          8))
+    parts.append(row("Ambigüedad",          ambiguity,        10))
+    parts.append(row("Longitud",            length_score,      8))
+    parts.append(row("Consistencia",        consistency,       8))
+    parts.append(row("Terminología",        terminology,       8))
+    parts.append(row("Uso por FIN",         fin_usability,    10))
+    parts.append(row("Escalamiento",        escalation_score,  8))
+    parts.append(row("Mantenibilidad",      maintainability,   7))
+    parts.append(row("Riesgo operativo",    operational_risk,  7))
+    parts.append(f"  {'─'*28}")
+    parts.append(f"  TOTAL {'.' * 16} {total}/100")
+    parts.append("")
+
+    # FORTALEZAS
+    parts += [div3, "FORTALEZAS", div3, ""]
+    if strengths:
+        for s in strengths:
+            parts.append(f"  ✓ {s}")
+    else:
+        parts.append("  — No se identificaron fortalezas destacables.")
+    parts.append("")
+
+    # PROBLEMAS
+    parts += [div3, "PROBLEMAS DETECTADOS", div3, ""]
+    _problem_labels = {
+        "Pasos faltantes": lambda: not step_hits,
+        "Pasos ambiguos": lambda: bool(ambiguous_steps),
+        "Repeticiones": lambda: repetitions > 0,
+        "Contradicciones": lambda: internal_contradiction,
+        "Términos absolutos": lambda: bool(absolute_hits),
+        "Información desactualizada": lambda: bool(date_refs),
+        "Artículo demasiado largo": lambda: word_count > 800,
+        "Artículo demasiado corto": lambda: word_count < 30,
+        "Acciones no ejecutables por FIN": lambda: bool(fin_blocker_hits),
+        "Sin criterio de escalamiento": lambda: not has_escalation,
+    }
+    detected_labels = [lbl for lbl, check in _problem_labels.items() if check()]
+    if detected_labels:
+        parts.append("  Detectado automáticamente:")
+        for lbl in detected_labels:
+            parts.append(f"  🔍 {lbl}")
+        parts.append("")
+
+    if problems:
+        for p in problems:
+            parts.append(f"  ⚠️  {p}")
+    else:
+        parts.append("  ✅ No se detectaron problemas críticos.")
+    parts.append("")
+
+    # RIESGOS
+    parts += [div3, "RIESGOS", div3, ""]
+    for r in risks:
+        parts.append(f"  🔴 {r}")
+    parts.append("")
+
+    # RECOMENDACIONES
+    parts += [div3, "RECOMENDACIONES", div3, ""]
+    # Dedup
+    seen_recs = set()
+    unique_recs = []
+    for rec in recommendations:
+        key = rec[:60]
+        if key not in seen_recs:
+            seen_recs.add(key)
+            unique_recs.append(rec)
+    if unique_recs:
+        for i, rec in enumerate(unique_recs, 1):
+            parts.append(f"  {i}. {rec}")
+    else:
+        parts.append("  — No se generaron recomendaciones adicionales.")
+    parts.append("")
+
+    # VEREDICTO FINAL
+    parts += [div2, "VEREDICTO FINAL", div2, ""]
+    if total >= 78:
+        veredicto = (
+            f"El artículo está en condiciones de ser utilizado por FIN como fuente de resolución autónoma. "
+            f"Score {total}/100 — {classification}."
+        )
+    elif total >= 50:
+        veredicto = (
+            f"El artículo puede utilizarse con precaución. Aplicar las recomendaciones antes del despliegue. "
+            f"Score {total}/100 — {classification}."
+        )
+    else:
+        veredicto = (
+            f"El artículo NO debe utilizarse como fuente de resolución autónoma en su estado actual. "
+            f"Requiere optimización significativa. Score {total}/100 — {classification}."
+        )
+    parts.append(f"  {veredicto}")
+    parts.append("")
+
+    # VERSIÓN OPTIMIZADA
+    parts += [div2, "VERSIÓN OPTIMIZADA DEL ARTÍCULO", div2, ""]
+    parts.append(optimized)
+    parts.append("")
+    parts.append(sep)
+
+    return "\n".join(parts)
+
+
 @mcp.tool()
 async def score_guideline(
     guideline: str,
