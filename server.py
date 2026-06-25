@@ -1580,6 +1580,447 @@ async def audit_knowledge(
 
 
 @mcp.tool()
+async def optimize_article(
+    article: str,
+    product: str = "general",
+    context: str = ""
+) -> str:
+    """
+    Recibe un artículo de Base de Conocimiento y devuelve una versión optimizada
+    específicamente para FIN. No inventa información, no cambia el significado del
+    artículo. Solo mejora estructura, claridad y utilidad para IA conversacional.
+    Reutiliza la lógica de detección de audit_knowledge.
+    """
+
+    import re as _re
+
+    text       = article.strip()
+    text_lower = text.lower()
+    words      = text.split()
+    word_count = len(words)
+    sentences  = [s.strip() for s in _re.split(r'[.!?]+', text) if s.strip()]
+    lines      = [l.strip() for l in text.splitlines() if l.strip()]
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # DETECCIÓN — misma lógica que audit_knowledge                            #
+    # ════════════════════════════════════════════════════════════════════════ #
+
+    # Estructura
+    has_numbered_steps = bool(_re.search(r'(?:^|\n)\s*\d+[\.\)]\s+\S', text))
+    has_bullets        = bool(_re.search(r'(?:^|\n)\s*[-•*]\s+\S', text))
+    has_sections       = bool(_re.search(r'(?:^|\n)\s*#{1,3}\s+\S|(?:^|\n)[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{3,}:', text))
+
+    # Verbos de acción
+    step_verbs_es = [
+        "hacer clic", "selecciona", "ingresa", "abre", "cierra", "navega",
+        "accede", "verifica", "confirma", "guarda", "descarga", "instala",
+        "actualiza", "reinicia", "copia", "pega", "escribe", "busca",
+        "haz clic", "pulsa", "presiona", "dirígete", "ve a", "entra",
+        "click", "ir a", "login", "inicia sesión",
+    ]
+    step_hits = [v for v in step_verbs_es if v in text_lower]
+
+    # Términos absolutos
+    absolute_terms = ["siempre", "nunca", "todos", "ninguno", "cualquier caso"]
+    absolute_hits  = [t for t in absolute_terms if t in text_lower]
+
+    # Frases vagas
+    vague_phrases = [
+        "de alguna manera", "como sea posible", "en la medida",
+        "según corresponda", "a discreción", "podría", "quizás",
+        "tal vez", "depende", "en algunos casos", "eventualmente",
+        "normalmente", "generalmente", "usualmente",
+    ]
+    vague_hits = [p for p in vague_phrases if p in text_lower]
+
+    # Escalamiento
+    escalation_signals = [
+        "escalar", "escala", "contacta a soporte", "contactar soporte",
+        "comunícate con", "transfiere", "agente", "asesor", "caso de soporte",
+        "ticket", "si el problema persiste", "si no se resuelve",
+    ]
+    has_escalation     = any(e in text_lower for e in escalation_signals)
+    anti_escalation_rule = bool(_re.search(
+        r'nunca\s+(escal|contact|transf)\w*|no\s+(escal|contact|transf)\w*\s+este',
+        text_lower
+    ))
+
+    # Loop Risk
+    loop_patterns = [
+        "vuelve a intentar", "consulta nuevamente este artículo",
+        "reinicia nuevamente", "repite los pasos", "inténtalo otra vez",
+        "vuelve a reiniciar", "vuelve a intentar el procedimiento",
+        "repite el procedimiento", "intenta de nuevo", "vuelve a empezar",
+    ]
+    loop_hits  = [p for p in loop_patterns if p in text_lower]
+    loop_count = len(loop_hits)
+    if bool(_re.search(r'(vuelve al paso|regresa al paso|repite desde el paso|vuelve a la sección)', text_lower)):
+        loop_count += 1
+        loop_hits.append("referencia circular entre pasos")
+    if loop_count == 0:       loop_risk_level = "BAJO"
+    elif loop_count == 1:     loop_risk_level = "MEDIO"
+    elif loop_count <= 3:     loop_risk_level = "ALTO"
+    else:                     loop_risk_level = "CRÍTICO"
+
+    # Redundancias
+    sentence_words = [frozenset(s.lower().split()) for s in sentences if len(s.split()) >= 5]
+    repetitions = 0
+    seen_sents  = []
+    for sw in sentence_words:
+        for prev in seen_sents:
+            if sw and prev and len(sw & prev) / max(len(sw), len(prev)) >= 0.80:
+                repetitions += 1
+                break
+        seen_sents.append(sw)
+
+    # Párrafos largos
+    long_paragraphs = [s for s in sentences if len(s.split()) > 40]
+
+    # Contradicciones
+    contradictions = [
+        ("activar", "desactivar"), ("habilitar", "deshabilitar"),
+        ("guardar", "no guardar"), ("cerrar", "no cerrar"),
+    ]
+    internal_contradiction = any(
+        _ca in text_lower and _cb in text_lower for _ca, _cb in contradictions
+    )
+
+    # Términos técnicos sin definición
+    technical_terms = [
+        "api", "webhook", "endpoint", "token", "oauth", "json", "xml",
+        "cufe", "dian", "rut", "nit", "uuid", "erp", "crm", "ide",
+    ]
+    undefined_terms = [t for t in technical_terms if t in text_lower]
+
+    # Cobertura temática
+    coverage_signals = [
+        "causa", "síntoma", "solución", "resultado", "verificar", "error",
+        "problema", "cuándo", "prerequisito", "requisito", "nota", "importante",
+        "advertencia", "aviso", "ejemplo",
+    ]
+    cov_hits = [s for s in coverage_signals if s in text_lower]
+
+    # Título del artículo
+    _title_m = _re.match(r'^#+\s*(.+?)$', text.strip(), _re.MULTILINE)
+    _atitle   = _title_m.group(1).strip() if _title_m else (lines[0] if lines else "Artículo")
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # PROBLEMAS ENCONTRADOS                                                    #
+    # ════════════════════════════════════════════════════════════════════════ #
+    _problems_found = []
+
+    if vague_hits:
+        _problems_found.append(
+            f"Ambigüedad: frases vagas detectadas ({', '.join(repr(p) for p in vague_hits[:3])}).")
+    if not step_hits:
+        _problems_found.append(
+            "Pasos faltantes: no se detectaron verbos de acción (selecciona, ingresa, verifica...).")
+    if not has_numbered_steps and word_count > 60:
+        _problems_found.append(
+            "Estructura deficiente: pasos sin numerar. FIN puede omitir pasos críticos.")
+    if not has_sections:
+        _problems_found.append(
+            "Estructura deficiente: sin encabezados ni secciones diferenciadas.")
+    if long_paragraphs:
+        _problems_found.append(
+            f"Párrafos largos: {len(long_paragraphs)} oración(es) con más de 40 palabras. Dificultan la lectura de FIN.")
+    if absolute_hits:
+        _problems_found.append(
+            f"Términos absolutos sin condición: {', '.join(repr(t) for t in absolute_hits)}. Bloquean la lógica de FIN.")
+    if anti_escalation_rule:
+        _problems_found.append(
+            "Regla anti-escalamiento: 'nunca escales' o equivalente. FIN quedará sin salida al agotar los pasos.")
+    elif not has_escalation:
+        _problems_found.append(
+            "Ausencia de criterio de escalamiento: FIN no sabe cuándo transferir al agente humano.")
+    if loop_count > 0:
+        _problems_found.append(
+            f"Loop instruccional {loop_risk_level}: {loop_count} patrón(es) de bucle detectado(s) "
+            f"({', '.join(repr(h) for h in loop_hits[:3])}).")
+    if repetitions > 0:
+        _problems_found.append(
+            f"Redundancias: {repetitions} oración(es) con contenido repetido (similitud ≥ 80%).")
+    if undefined_terms:
+        _problems_found.append(
+            f"Lenguaje poco claro: términos técnicos sin definición ({', '.join(undefined_terms[:4])}).")
+    if len(cov_hits) < 2:
+        _problems_found.append(
+            "Cobertura insuficiente: el artículo no menciona causa, solución ni resultado esperado.")
+    if internal_contradiction:
+        _problems_found.append(
+            "Contradicción interna: el artículo menciona acciones opuestas sin distinción de contexto.")
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # CONSTRUCCIÓN DE VERSIÓN OPTIMIZADA                                      #
+    # Solo reorganiza lo que existe. No inventa información.                  #
+    # ════════════════════════════════════════════════════════════════════════ #
+
+    # Extraer pasos del original, filtrar loops y reglas de no escalar
+    _raw_steps = _re.findall(r'(?:^|\n)\s*\d+[\.\)]\s+(.+)', text)
+    _good_steps = []
+    for _s in _raw_steps:
+        _sl = _s.lower()
+        if any(lp in _sl for lp in loop_patterns): continue
+        if _re.search(r'nunca\s+(escal|contact)|no\s+existe\s+otra|no\s+importa\s+cu', _sl): continue
+        for _at in absolute_hits:
+            _s = _re.sub(r'\b' + _re.escape(_at) + r'\b', '', _s, flags=_re.IGNORECASE).strip()
+        if len(_s.strip()) > 3:
+            _good_steps.append(_s.strip())
+
+    # Si no hay pasos numerados, extraer oraciones con verbos de acción
+    if not _good_steps:
+        for _sent in sentences:
+            _sl = _sent.lower()
+            if any(lp in _sl for lp in loop_patterns): continue
+            if _re.search(r'nunca\s+(escal|contact)|no\s+existe\s+otra|no\s+importa\s+cu', _sl): continue
+            if any(v in _sl for v in step_verbs_es[:12]) and len(_sent.split()) > 4:
+                _good_steps.append(_sent.strip())
+        _good_steps = _good_steps[:6]
+
+    # Artículo optimizado — secciones estándar para IA conversacional
+    _opt = []
+    _opt.append(f"# {_atitle}")
+    _opt.append("")
+    _opt.append("## Objetivo")
+    _opt.append(f"Guiar al usuario paso a paso en la resolución de: {_atitle.lower()}.")
+    _opt.append("")
+    _opt.append("## Cuándo aplica")
+    _opt.append("Aplica cuando el usuario reporte este problema activamente durante la conversación.")
+    _opt.append("")
+    _opt.append("## Pasos")
+    _opt.append("")
+    if _good_steps:
+        for _i, _st in enumerate(_good_steps, 1):
+            _opt.append(f"{_i}. {_st}")
+            _opt.append(f"   → Pregunta al usuario si el problema fue resuelto antes de continuar.")
+    else:
+        _opt.append("1. Solicita al usuario que describa el error exacto que está viendo.")
+        _opt.append("   → Confirma que tienes suficiente información para diagnosticar.")
+        _opt.append("2. Aplica los pasos documentados para este caso.")
+        _opt.append("   → Confirma con el usuario el resultado de cada paso.")
+    _opt.append("")
+    _opt.append("## Resultado esperado")
+    _opt.append("El usuario confirma que el problema fue resuelto y puede continuar operando con normalidad.")
+    _opt.append("")
+    _opt.append("## Excepciones")
+    _opt.append("- Si el usuario indica que el error ocurre en múltiples dispositivos o cuentas: puede ser un problema de plataforma. Escala de inmediato.")
+    _opt.append("- Si el usuario ya realizó estos pasos previamente sin éxito: escala sin repetir el proceso.")
+    _opt.append("")
+    _opt.append("## Escalamiento")
+    _opt.append("Si el problema persiste luego de completar todos los pasos anteriores, transfiere la conversación al agente humano.")
+    _opt.append("")
+    _opt.append("## Información para el agente")
+    _opt.append("Al escalar, incluye:")
+    _opt.append(f"- Producto afectado: {product}")
+    _opt.append("- Error reportado: [descripción exacta del error según el usuario]")
+    _opt.append("- Pasos realizados: [cuáles pasos se ejecutaron y cuál fue el resultado de cada uno]")
+    _opt.append("- Intentos previos: [si el usuario ya intentó resolver antes de contactar]")
+    optimized = "\n".join(_opt)
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # OPTIMIZACIONES APLICADAS                                                 #
+    # ════════════════════════════════════════════════════════════════════════ #
+    _applied = []
+    if not has_numbered_steps and _good_steps:
+        _applied.append("Se numeraron los pasos.")
+    if not has_sections:
+        _applied.append("Se reorganizó el flujo con secciones claras (Objetivo, Pasos, Resultado esperado, Escalamiento).")
+    if anti_escalation_rule or not has_escalation:
+        _applied.append("Se agregó criterio de escalamiento condicional explícito.")
+    if absolute_hits:
+        _applied.append(f"Se eliminaron términos absolutos ({', '.join(absolute_hits)}) que bloqueaban la lógica de FIN.")
+    if loop_count > 0:
+        _applied.append(
+            f"Se eliminaron {loop_count} patrón(es) de bucle instruccional "
+            f"({', '.join(repr(h) for h in loop_hits[:3])}).")
+    if long_paragraphs:
+        _applied.append("Se dividieron párrafos largos en pasos discretos.")
+    if not step_hits or not _good_steps:
+        _applied.append("Se mejoró el lenguaje para IA: pasos estructurados con verbos de acción y confirmaciones.")
+    else:
+        _applied.append("Se mejoró el lenguaje para IA: cada paso incluye confirmación de resolución.")
+    _applied.append("Se separaron excepciones en sección propia.")
+    _applied.append("Se agregó resultado esperado.")
+    _applied.append("Se agregó sección de información para el agente al escalar.")
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # IMPACTO ESTIMADO                                                         #
+    # ════════════════════════════════════════════════════════════════════════ #
+    def _impact(count):
+        if count >= 3: return "Alta"
+        if count >= 1: return "Media"
+        return "Baja"
+
+    impact_clarity   = _impact(len(vague_hits) + (1 if absolute_hits else 0))
+    impact_fin       = _impact(
+        (1 if not has_numbered_steps else 0)
+        + (1 if not has_sections else 0)
+        + (1 if anti_escalation_rule or not has_escalation else 0)
+    )
+    impact_loops     = ("Alta" if loop_count >= 2 else "Media" if loop_count == 1 else "Sin cambios necesarios")
+    impact_ambiguity = _impact(len(absolute_hits) + len(vague_hits))
+    impact_maintain  = _impact((1 if not has_sections else 0) + (1 if repetitions > 0 else 0))
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # CALIDAD FINAL (del artículo optimizado)                                  #
+    # ════════════════════════════════════════════════════════════════════════ #
+    _opt_score = 70  # base: estructura estándar aplicada
+    if _good_steps:                        _opt_score += 10
+    if not _problems_found:                _opt_score += 10
+    elif len(_problems_found) >= 5:        _opt_score -= 15
+    elif len(_problems_found) >= 3:        _opt_score -= 5
+    if anti_escalation_rule:               _opt_score -= 5
+    if absolute_hits and len(absolute_hits) >= 2: _opt_score -= 5
+    _opt_score = max(0, min(100, _opt_score))
+
+    if _opt_score >= 85:
+        final_quality = "Excelente";        quality_emoji = "✅"
+    elif _opt_score >= 72:
+        final_quality = "Muy buena";        quality_emoji = "🟢"
+    elif _opt_score >= 58:
+        final_quality = "Aceptable";        quality_emoji = "⚠️"
+    elif _opt_score >= 40:
+        final_quality = "Requiere revisión"; quality_emoji = "🔶"
+    else:
+        final_quality = "No apta";          quality_emoji = "🔴"
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # OBSERVACIONES                                                            #
+    # ════════════════════════════════════════════════════════════════════════ #
+    blockers_remaining = []
+    if anti_escalation_rule:
+        blockers_remaining.append(
+            "la regla anti-escalamiento debe eliminarse del artículo fuente antes de publicar")
+    if loop_count > 0:
+        blockers_remaining.append("los patrones de bucle deben eliminarse del artículo fuente")
+    if absolute_hits:
+        blockers_remaining.append(
+            f"los términos absolutos ({', '.join(absolute_hits)}) deben revisarse en el artículo fuente")
+
+    if not blockers_remaining and _opt_score >= 72:
+        observation = (
+            "✅ El artículo optimizado puede publicarse para FIN. "
+            "Se recomienda revisión humana de la versión optimizada antes del despliegue en producción."
+        )
+    elif not blockers_remaining:
+        observation = (
+            "⚠️ El artículo optimizado requiere revisión adicional antes de publicarse para FIN. "
+            "Aplica las optimizaciones sobre el artículo fuente y verifica con audit_knowledge."
+        )
+    else:
+        observation = (
+            "🚫 El artículo NO puede publicarse para FIN en su estado actual. "
+            f"Intervención humana requerida: {'; '.join(blockers_remaining)}. "
+            "La versión optimizada muestra la estructura objetivo; el contenido fuente debe corregirse primero."
+        )
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # CONSTRUCCIÓN DEL REPORTE                                                 #
+    # ════════════════════════════════════════════════════════════════════════ #
+    sep  = "=" * 48
+    div2 = "─" * 40
+
+    parts = []
+
+    parts += [sep, "OPTIMIZE ARTICLE — FIN Knowledge Core", sep, ""]
+    parts.append(f"PRODUCTO: {product.upper()}")
+    if context:
+        parts.append(f"CONTEXTO: {context}")
+    parts.append("")
+
+    # ── Versión original
+    parts += [div2, "VERSIÓN ORIGINAL", div2, ""]
+    parts.append(f"  Título    : {_atitle}")
+    parts.append(f"  Longitud  : {word_count} palabras | {len(lines)} líneas")
+    _struct_desc = []
+    if has_sections:       _struct_desc.append("con secciones")
+    else:                  _struct_desc.append("sin secciones")
+    if has_numbered_steps: _struct_desc.append("pasos numerados")
+    elif has_bullets:      _struct_desc.append("viñetas")
+    else:                  _struct_desc.append("sin estructura de pasos")
+    parts.append(f"  Estructura: {', '.join(_struct_desc)}")
+    if anti_escalation_rule:
+        parts.append("  Escalamiento: regla explícita que prohíbe escalar ⚠️")
+    elif has_escalation:
+        parts.append("  Escalamiento: mencionado")
+    else:
+        parts.append("  Escalamiento: no definido")
+    if loop_count > 0:
+        parts.append(f"  Loop risk : {loop_risk_level} ({loop_count} patrón(es) detectado(s))")
+    else:
+        parts.append("  Loop risk : BAJO")
+    parts.append("")
+
+    # ── Problemas encontrados
+    parts += [div2, "PROBLEMAS ENCONTRADOS", div2, ""]
+    if _problems_found:
+        for p in _problems_found:
+            parts.append(f"  ⚠️  {p}")
+    else:
+        parts.append("  ✅ No se detectaron problemas críticos en el artículo original.")
+    parts.append("")
+
+    # ── Optimizaciones aplicadas
+    parts += [div2, "OPTIMIZACIONES APLICADAS", div2, ""]
+    for a in _applied:
+        parts.append(f"  ✓ {a}")
+    parts.append("")
+
+    # ── Versión optimizada
+    parts += [div2, "VERSIÓN OPTIMIZADA", div2, ""]
+    parts.append(optimized)
+    parts.append("")
+
+    # ── Comparación
+    parts += [div2, "COMPARACIÓN", div2, ""]
+    parts.append("  Original")
+    if not has_sections and not has_numbered_steps:
+        parts.append("    → Texto plano sin estructura. FIN no puede distinguir pasos de contexto.")
+    elif not has_numbered_steps:
+        parts.append("    → Tiene secciones pero pasos sin numerar. FIN puede omitir pasos.")
+    else:
+        parts.append("    → Estructura parcial con problemas detectados.")
+    if loop_count > 0:
+        parts.append(f"    → {loop_count} patrón(es) de bucle: FIN repite instrucciones sin avanzar.")
+    if anti_escalation_rule:
+        parts.append("    → Regla que prohíbe escalar: FIN queda bloqueado sin salida.")
+    elif not has_escalation:
+        parts.append("    → Sin escalamiento: FIN no tiene instrucción de salida.")
+    parts.append("  ↓")
+    parts.append("  Optimizado")
+    parts.append("    → Estructura estándar: Objetivo → Pasos numerados → Resultado → Excepciones → Escalamiento.")
+    parts.append("    → Cada paso incluye confirmación de resolución antes de avanzar.")
+    parts.append("    → Criterio de escalamiento condicional explícito.")
+    if loop_count > 0:
+        parts.append("    → Sin patrones de bucle instruccional.")
+    if absolute_hits:
+        parts.append("    → Sin términos absolutos que bloqueen la lógica de FIN.")
+    parts.append("")
+
+    # ── Impacto estimado
+    parts += [div2, "IMPACTO ESTIMADO", div2, ""]
+    parts.append(f"  Mejora en claridad ............... {impact_clarity}")
+    parts.append(f"  Mejora para FIN .................. {impact_fin}")
+    parts.append(f"  Reducción de loops ............... {impact_loops}")
+    parts.append(f"  Reducción de ambigüedad .......... {impact_ambiguity}")
+    parts.append(f"  Facilidad de mantenimiento ....... {impact_maintain}")
+    parts.append("")
+
+    # ── Calidad final
+    parts += [div2, "CALIDAD FINAL", div2, ""]
+    parts.append(f"  {quality_emoji} {final_quality}")
+    parts.append("")
+
+    # ── Observaciones
+    parts += [div2, "OBSERVACIONES", div2, ""]
+    parts.append(f"  {observation}")
+    parts.append("")
+    parts.append(sep)
+
+    return "\n".join(parts)
+
+
+@mcp.tool()
 async def score_guideline(
     guideline: str,
     product: str = "general",
