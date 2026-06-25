@@ -98,13 +98,7 @@ async def optimize_guideline(
     risk_score = 0
 
     # Detectar términos absolutos
-    absolute_words = [
-        "siempre",
-        "nunca",
-        "todos",
-        "ninguno",
-        "cualquier"
-    ]
+    absolute_words = _de.GUIDELINE_ABSOLUTE_WORDS
 
     for word in absolute_words:
         if word in text:
@@ -130,14 +124,7 @@ async def optimize_guideline(
             risk_score += 1
 
     # Detectar escalamiento
-    escalation_words = [
-        "escalar",
-        "escala",
-        "transferir",
-        "transfiere",
-        "agente",
-        "agente humano"
-    ]
+    escalation_words = _de.GUIDELINE_ESCALATION_WORDS
 
     escalation_detected = False
 
@@ -179,12 +166,7 @@ async def optimize_guideline(
         risk_score += 1
 
     # Calcular riesgo
-    if risk_score >= 7:
-        risk = "ALTO"
-    elif risk_score >= 4:
-        risk = "MEDIO"
-    else:
-        risk = "BAJO"
+    risk = _de.guideline_risk_level(risk_score)
 
     # Generar versión optimizada
     optimized = guideline
@@ -276,7 +258,7 @@ async def classify_guideline(
     # Calcular nivel de riesgo
     risk_score = 0
 
-    absolute_words = ["siempre", "nunca", "todos", "ninguno", "cualquier"]
+    absolute_words = _de.GUIDELINE_ABSOLUTE_WORDS
     for word in absolute_words:
         if word in text:
             risk_score += 2
@@ -292,12 +274,7 @@ async def classify_guideline(
     if len(guideline.strip()) < 20:
         risk_score += 2
 
-    if risk_score >= 7:
-        nivel_riesgo = "ALTO"
-    elif risk_score >= 4:
-        nivel_riesgo = "MEDIO"
-    else:
-        nivel_riesgo = "BAJO"
+    nivel_riesgo = _de.guideline_risk_level(risk_score)
 
     # Determinar prioridad
     if nivel_riesgo == "ALTO" or categoria == "Escalamiento":
@@ -392,11 +369,11 @@ async def detect_conflicts(
 
     texts = [g.lower() for g in guidelines]
 
-    escalation_words = ["escalar", "escala", "transferir", "transfiere", "agente humano"]
-    resolve_words = ["resolver", "intenta resolver", "resuelve", "solucionar", "soluciona"]
-    prohibition_words = ["no escalar", "no transferir", "no escales", "nunca escalar", "no ofrecer"]
-    obligation_words = ["siempre escalar", "debe escalar", "escalar siempre", "siempre transferir"]
-    priority_words = ["urgente", "alta prioridad", "prioridad alta", "prioridad baja", "baja prioridad", "normal"]
+    escalation_words = _de.GUIDELINE_ESCALATION_WORDS
+    resolve_words = _de.GUIDELINE_RESOLVE_WORDS
+    prohibition_words = _de.GUIDELINE_PROHIBITION_WORDS
+    obligation_words = _de.GUIDELINE_OBLIGATION_WORDS
+    priority_words = _de.GUIDELINE_PRIORITY_WORDS
 
     escalation_indices = [
         i for i, t in enumerate(texts)
@@ -449,12 +426,7 @@ async def detect_conflicts(
                 severity_score += 5
 
     # Conflicto 3: condiciones incompatibles
-    condition_pairs = [
-        ("frustración", "molesto"),
-        ("primera vez", "reincidente"),
-        ("plan básico", "plan premium"),
-        ("sin contrato", "con contrato"),
-    ]
+    condition_pairs = _de.GUIDELINE_CONDITION_PAIRS
 
     for word_a, word_b in condition_pairs:
         indices_a = [i for i, t in enumerate(texts) if word_a in t]
@@ -469,9 +441,7 @@ async def detect_conflicts(
                     severity_score += 2
 
     # Conflicto 4: diferentes prioridades para el mismo escenario
-    shared_scenarios = [
-        "factura", "cobro", "pago", "error", "acceso", "contraseña", "cuenta"
-    ]
+    shared_scenarios = _de.GUIDELINE_SHARED_SCENARIOS
 
     for scenario in shared_scenarios:
         indices_with_scenario = [i for i, t in enumerate(texts) if scenario in t]
@@ -492,12 +462,7 @@ async def detect_conflicts(
                 severity_score += 3
 
     # Conflicto 5: respuestas contradictorias para el mismo caso
-    contradiction_pairs = [
-        ("disculpa", "no disculpa"),
-        ("ofrece descuento", "no ofrece descuento"),
-        ("confirma el error", "niega el error"),
-        ("da el número de caso", "no compartas el número"),
-    ]
+    contradiction_pairs = _de.GUIDELINE_CONTRADICTION_PAIRS
 
     for affirm, deny in contradiction_pairs:
         indices_affirm = [i for i, t in enumerate(texts) if affirm in t]
@@ -514,11 +479,7 @@ async def detect_conflicts(
     # Conflicto 6: duplicados o casi idénticos
     for i in range(len(guidelines)):
         for j in range(i + 1, len(guidelines)):
-            words_i = set(texts[i].split())
-            words_j = set(texts[j].split())
-            if not words_i or not words_j:
-                continue
-            overlap = len(words_i & words_j) / max(len(words_i), len(words_j))
+            overlap = _de.jaccard(_de.word_set(texts[i]), _de.word_set(texts[j]))
             if overlap >= 0.8:
                 conflicts.append(
                     f"Guidelines {i + 1} y {j + 1} son casi idénticas "
@@ -548,12 +509,7 @@ async def detect_conflicts(
                     severity_score += 3
 
     # Calcular severidad
-    if severity_score >= 10:
-        severidad = "ALTA"
-    elif severity_score >= 4:
-        severidad = "MEDIA"
-    else:
-        severidad = "BAJA"
+    severidad = _de.conflict_severity_level(severity_score)
 
     # Construir riesgo
     if severidad == "ALTA":
@@ -3379,17 +3335,7 @@ async def score_guideline(
     # ------------------------------------------------------------------ #
     clarity = 10
 
-    vague_phrases = [
-        "de alguna manera",
-        "como sea posible",
-        "en la medida",
-        "según corresponda",
-        "a discreción",
-        "dependiendo",
-        "podría",
-        "quizás",
-        "tal vez",
-    ]
+    vague_phrases = _de.GUIDELINE_VAGUE_PHRASES
 
     vague_hits = [p for p in vague_phrases if p in text]
 
@@ -3413,12 +3359,7 @@ async def score_guideline(
     # ------------------------------------------------------------------ #
     actionability = 10
 
-    action_verbs = [
-        "escala", "escalar", "responde", "responder", "informa", "informar",
-        "ofrece", "ofrecer", "solicita", "solicitar", "verifica", "verificar",
-        "confirma", "confirmar", "transfiere", "transferir", "resuelve",
-        "resolver", "indica", "indicar", "explica", "explicar",
-    ]
+    action_verbs = _de.GUIDELINE_ACTION_VERBS
 
     has_action_verb = any(v in text for v in action_verbs)
 
@@ -3443,21 +3384,7 @@ async def score_guideline(
     # ------------------------------------------------------------------ #
     ambiguity = 15
 
-    ambiguous_terms = [
-        "siempre",
-        "nunca",
-        "normalmente",
-        "generalmente",
-        "etc",
-        "si es posible",
-        "rápidamente",
-        "cuando sea necesario",
-        "lo antes posible",
-        "en lo posible",
-        "suele",
-        "a veces",
-        "casi siempre",
-    ]
+    ambiguous_terms = _de.GUIDELINE_AMBIGUOUS_TERMS
 
     ambiguous_hits = [t for t in ambiguous_terms if t in text]
 
@@ -3477,9 +3404,7 @@ async def score_guideline(
     # ------------------------------------------------------------------ #
     escalation_score = 15
 
-    escalation_words = [
-        "escalar", "escala", "transferir", "transfiere", "agente humano", "agente"
-    ]
+    escalation_words = _de.GUIDELINE_ESCALATION_WORDS
 
     mentions_escalation = any(w in text for w in escalation_words)
 
@@ -3516,11 +3441,7 @@ async def score_guideline(
     # ------------------------------------------------------------------ #
     specificity = 10
 
-    specific_signals = [
-        "factura", "cobro", "pago", "contraseña", "cuenta", "acceso",
-        "error", "plan", "contrato", "módulo", "reporte", "usuario",
-        "primera vez", "reincidente", "bloqueo", "cargo",
-    ]
+    specific_signals = _de.GUIDELINE_SPECIFIC_SIGNALS
 
     specific_hits = [s for s in specific_signals if s in text]
 
@@ -3547,12 +3468,7 @@ async def score_guideline(
     # ------------------------------------------------------------------ #
     consistency = 10
 
-    contradictions = [
-        ("escalar", "no escalar"),
-        ("siempre", "solo si"),
-        ("transfiere", "no transfieras"),
-        ("informa", "no informes"),
-    ]
+    contradictions = _de.GUIDELINE_CONTRADICTION_PAIRS
 
     internal_contradiction = False
 
@@ -3622,17 +3538,7 @@ async def score_guideline(
     # ------------------------------------------------------------------ #
     security = 10
 
-    risky_patterns = [
-        "comparte la contraseña",
-        "da acceso",
-        "otorga permiso",
-        "sin verificar",
-        "sin validar",
-        "sin confirmar identidad",
-        "sin autenticar",
-        "proporciona datos personales",
-        "envía el número de tarjeta",
-    ]
+    risky_patterns = _de.GUIDELINE_RISKY_PATTERNS
 
     risky_hits = [r for r in risky_patterns if r in text]
 
@@ -3683,10 +3589,7 @@ async def score_guideline(
             "No indica explícitamente que FIN debe intentar resolver antes de escalar."
         )
 
-    empathy_signals = [
-        "disculpa", "lamentamos", "entendemos", "comprendo",
-        "te ayudo", "con gusto", "con placer",
-    ]
+    empathy_signals = _de.GUIDELINE_EMPATHY_SIGNALS
 
     if any(e in text for e in empathy_signals):
         strengths.append("Incluye señales de empatía hacia el cliente.")
@@ -3869,40 +3772,20 @@ async def simulate_fin(
     # ------------------------------------------------------------------ #
     # 1. Detectar intención principal                                      #
     # ------------------------------------------------------------------ #
-    intention_map = [
-        ("Facturación",    ["factura", "cobro", "pago", "cargo", "reembolso", "cobrar", "facturar"]),
-        ("Inventario",     ["inventario", "stock", "producto", "bodega", "existencia", "kardex"]),
-        ("Caja",           ["caja", "cierre de caja", "apertura de caja", "caja menor", "arqueo"]),
-        ("POS",            ["pos", "punto de venta", "terminal", "datafono", "tpv"]),
-        ("Restobar",       ["restobar", "restaurante", "mesa", "pedido", "cocina", "comanda"]),
-        ("DIAN",           ["dian", "factura electrónica", "cufe", "resolución dian", "rut"]),
-        ("Nómina",         ["nómina", "empleado", "liquidación", "contrato", "devengado", "descuento"]),
-        ("Reportes",       ["reporte", "informe", "exportar", "descargar", "estadística", "dashboard"]),
-        ("Configuración",  ["configuración", "configurar", "ajuste", "parámetro", "módulo", "activar"]),
-        ("Error técnico",  ["error", "fallo", "no funciona", "no carga", "pantalla", "bug", "problema técnico"]),
-        ("Acceso",         ["contraseña", "acceso", "usuario", "sesión", "ingresar", "login", "clave"]),
-        ("Seguridad",      ["seguridad", "fraude", "robo", "suplantación", "bloqueo", "permiso"]),
-    ]
+    intention_map = _de.INTENTION_MAP
 
-    intention = "Otro"
-    for label, keywords in intention_map:
-        if any(k in text for k in keywords):
-            intention = label
-            break
+    intention = _de.detect_intention(text)
+    if intention == "General":
+        intention = "Otro"
 
     # ------------------------------------------------------------------ #
     # 2. Detectar emoción                                                  #
     # ------------------------------------------------------------------ #
-    if any(w in text for w in ["furioso", "harto", "no sirve", "pésimo", "terrible", "inaceptable"]):
-        emotion = "Frustrado"
-    elif any(w in text for w in ["molesto", "enojado", "molesta", "enojada", "fastidio", "mal servicio"]):
-        emotion = "Molesto"
-    elif any(w in text for w in ["urgente", "ya", "inmediatamente", "crítico", "emergencia", "no puedo esperar"]):
-        emotion = "Urgente"
-    elif any(w in text for w in ["no entiendo", "no sé", "confundido", "confundida", "cómo", "qué significa", "no comprendo"]):
-        emotion = "Confundido"
-    else:
-        emotion = "Neutral"
+    emotion = _de.detect_emotion(text)
+    if emotion == "Neutral":
+        # check for Confundido which is not in the centralized detect_emotion
+        if any(w in text for w in ["no entiendo", "no sé", "confundido", "confundida", "cómo", "qué significa", "no comprendo"]):
+            emotion = "Confundido"
 
     # ------------------------------------------------------------------ #
     # 3. Determinar prioridad                                              #
@@ -3919,8 +3802,8 @@ async def simulate_fin(
     # ------------------------------------------------------------------ #
     # 4. Analizar guidelines recibidas                                     #
     # ------------------------------------------------------------------ #
-    escalation_words   = ["escalar", "escala", "transferir", "transfiere", "agente humano", "agente"]
-    resolve_words      = ["resolver", "intenta resolver", "resuelve", "solucionar", "base de conocimiento"]
+    escalation_words   = _de.GUIDELINE_ESCALATION_WORDS
+    resolve_words      = _de.GUIDELINE_RESOLVE_WORDS
     guide_words        = ["paso a paso", "guía", "instrucciones", "procedimiento", "pasos"]
     info_request_words = ["solicita", "pide", "solicitar información", "confirma", "pregunta"]
 
@@ -4242,124 +4125,47 @@ async def generate_guideline(
     # ------------------------------------------------------------------ #
     # 1. Detectar intención principal                                      #
     # ------------------------------------------------------------------ #
-    intention_map = [
-        ("Facturación",   ["factura", "cobro", "pago", "cargo", "reembolso", "cobrar", "facturar", "cufe"]),
-        ("Inventario",    ["inventario", "stock", "producto", "bodega", "existencia", "kardex"]),
-        ("Caja",          ["caja", "cierre de caja", "apertura de caja", "arqueo"]),
-        ("POS",           ["pos", "punto de venta", "terminal", "datafono"]),
-        ("Restobar",      ["restobar", "restaurante", "mesa", "pedido", "cocina", "comanda"]),
-        ("DIAN",          ["dian", "factura electrónica", "cufe", "resolución dian", "rut"]),
-        ("Nómina",        ["nómina", "empleado", "liquidación", "contrato", "devengado"]),
-        ("Reportes",      ["reporte", "informe", "exportar", "estadística", "dashboard"]),
-        ("Configuración", ["configuración", "configurar", "ajuste", "parámetro", "activar"]),
-        ("Error técnico", ["error", "fallo", "no funciona", "no carga", "bug", "problema técnico"]),
-        ("Acceso",        ["contraseña", "acceso", "usuario", "sesión", "login", "clave"]),
-        ("Seguridad",     ["seguridad", "fraude", "robo", "suplantación", "bloqueo"]),
-    ]
-
-    intention = "General"
+    intention = _de.detect_intention(text)
     intention_keywords_found = []
-    for label, keywords in intention_map:
+    for label, keywords in _de.INTENTION_MAP:
         hits = [k for k in keywords if k in text]
         if hits:
-            intention = label
             intention_keywords_found = hits
             break
 
     # ------------------------------------------------------------------ #
     # 2. Detectar emoción                                                  #
     # ------------------------------------------------------------------ #
-    if any(w in text for w in ["furioso", "harto", "pésimo", "terrible", "inaceptable", "no sirve"]):
-        emotion = "Frustrado"
-    elif any(w in text for w in ["molesto", "enojado", "fastidio", "mal servicio"]):
-        emotion = "Molesto"
-    elif any(w in text for w in ["urgente", "hoy mismo", "inmediatamente", "emergencia", "no puedo esperar"]):
-        emotion = "Urgente"
-    elif any(w in text for w in ["no entiendo", "no sé", "confundido", "cómo", "qué significa", "no comprendo"]):
-        emotion = "Confundido"
-    else:
-        emotion = "Neutral"
+    emotion = _de.detect_emotion(text)
+    if emotion == "Neutral":
+        if any(w in text for w in ["no entiendo", "no sé", "confundido", "cómo", "qué significa", "no comprendo"]):
+            emotion = "Confundido"
 
     # ------------------------------------------------------------------ #
     # 3. Detectar problema principal                                       #
     # ------------------------------------------------------------------ #
-    problem_signals = {
-        "escalamiento sin criterios": [
-            "me pasaron con", "me transfirieron", "agente no supo",
-            "escalaron sin", "nadie me ayudó"
-        ],
-        "falta de resolución documentada": [
-            "no encuentro", "no hay artículo", "no existe documentación",
-            "no hay guía", "no encontré nada"
-        ],
-        "solución documentada insuficiente": [
-            "ya seguí los pasos", "seguí las instrucciones", "hice lo que dice",
-            "intenté lo del artículo", "el artículo no funciona"
-        ],
-        "respuesta genérica de FIN": [
-            "me dijo lo mismo", "misma respuesta", "respuesta repetida",
-            "no me ayuda", "respuesta automática"
-        ],
-        "fallo técnico sin guía": [
-            "error al", "no carga", "pantalla en blanco", "se traba",
-            "no responde", "caído"
-        ],
-        "urgencia no atendida": [
-            "hoy mismo", "urgente", "necesito ahora", "no puedo esperar",
-            "es crítico"
-        ],
-    }
-
-    detected_problems = []
-    for problem, signals in problem_signals.items():
-        if any(s in text for s in signals):
-            detected_problems.append(problem)
+    detected_problems = _de.detect_guideline_problems(text)
 
     main_problem = detected_problems[0] if detected_problems else "comportamiento de FIN no definido para este escenario"
 
     # ------------------------------------------------------------------ #
     # 4. Detectar punto de fallo de FIN                                    #
     # ------------------------------------------------------------------ #
-    failure_map = {
-        "escalamiento sin criterios":         "FIN escaló o puede escalar sin verificar si existe solución documentada.",
-        "falta de resolución documentada":    "FIN no cuenta con información suficiente para resolver el caso.",
-        "solución documentada insuficiente":  "FIN repitió una solución que el usuario ya intentó sin éxito.",
-        "respuesta genérica de FIN":          "FIN entregó una respuesta genérica que no resolvió el caso concreto.",
-        "fallo técnico sin guía":             "FIN no guió al usuario paso a paso ante un error técnico.",
-        "urgencia no atendida":               "FIN no priorizó ni aceleró la atención a pesar de la urgencia expresada.",
-        "comportamiento de FIN no definido para este escenario": "No se identificó un patrón de fallo claro. La guideline cubre el escenario preventivamente.",
-    }
-
-    failure_point = failure_map.get(main_problem, failure_map["comportamiento de FIN no definido para este escenario"])
+    failure_map = _de.GUIDELINE_FAILURE_MAP
+    _failure_map_full = dict(failure_map)
+    _failure_map_full["comportamiento de FIN no definido para este escenario"] = "No se identificó un patrón de fallo claro. La guideline cubre el escenario preventivamente."
+    failure_point = _failure_map_full.get(main_problem, _failure_map_full["comportamiento de FIN no definido para este escenario"])
 
     # ------------------------------------------------------------------ #
     # 5. Determinar comportamiento correcto de FIN                         #
     # ------------------------------------------------------------------ #
-    behavior_map = {
-        "escalamiento sin criterios":
-            "FIN debe verificar la base de conocimiento antes de escalar. "
-            "Únicamente cuando no exista solución documentada o el usuario confirme haberla intentado sin éxito, FIN debe transferir al agente.",
-        "falta de resolución documentada":
-            "FIN debe indicar que no cuenta con una solución documentada para el caso "
-            "y transferir al agente con el contexto completo de la conversación.",
-        "solución documentada insuficiente":
-            "Si el usuario confirma haber seguido los pasos documentados sin resultado, "
-            "FIN no debe repetir la misma solución. Debe escalar con el detalle del intento fallido.",
-        "respuesta genérica de FIN":
-            "FIN debe identificar el escenario específico antes de responder "
-            "y adaptar la respuesta al contexto concreto del usuario.",
-        "fallo técnico sin guía":
-            "Ante un error técnico, FIN debe guiar paso a paso al usuario. "
-            "Si el error persiste tras los pasos documentados, debe escalar indicando el error exacto.",
-        "urgencia no atendida":
-            "Cuando el usuario exprese urgencia, FIN debe priorizar el caso, "
-            "acortar el proceso de verificación y escalar si no puede resolver de inmediato.",
-        "comportamiento de FIN no definido para este escenario":
-            "FIN debe verificar si existe solución para el caso, guiar al usuario "
-            "y escalar únicamente si la solución documentada no resuelve el problema.",
-    }
-
-    expected_behavior = behavior_map.get(main_problem, behavior_map["comportamiento de FIN no definido para este escenario"])
+    behavior_map = _de.GUIDELINE_BEHAVIOR_MAP
+    _behavior_map_full = dict(behavior_map)
+    _behavior_map_full["comportamiento de FIN no definido para este escenario"] = (
+        "FIN debe verificar si existe solución para el caso, guiar al usuario "
+        "y escalar únicamente si la solución documentada no resuelve el problema."
+    )
+    expected_behavior = _behavior_map_full.get(main_problem, _behavior_map_full["comportamiento de FIN no definido para este escenario"])
 
     # ------------------------------------------------------------------ #
     # 6. Construir la guideline                                            #
@@ -4519,12 +4325,8 @@ async def generate_guideline(
     # ------------------------------------------------------------------ #
     total_impact_score = escalation_reduction + autonomous_improvement
 
-    if total_impact_score >= 80:
-        impact = "Alto"
-    elif total_impact_score >= 50:
-        impact = "Medio"
-    else:
-        impact = "Bajo"
+    _impact, _impl_prio = _de.guideline_impact_priority(total_impact_score)
+    impact = _impact
 
     if emotion in ("Frustrado",) or main_problem == "escalamiento sin criterios" or has_blockage:
         implementation_priority = "Crítica"
