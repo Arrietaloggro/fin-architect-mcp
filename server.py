@@ -1919,9 +1919,12 @@ async def extract_guidelines(
     context: str = ""
 ) -> str:
     """
-    Analiza un conjunto de conversaciones reales entre clientes y FIN para
-    detectar EVENTOS semánticos (no solo palabras), agrupar los que describen
-    el mismo comportamiento y proponer guidelines ordenadas por impacto.
+    Analiza un conjunto de conversaciones reales entre clientes y FIN.
+    FASE 1: Detecta eventos semánticos en cada conversación.
+    FASE 2: Calcula similitud Jaccard entre conjuntos de eventos.
+    FASE 3: Agrupa en clusters (umbral ≥ 70% similitud) usando union-find.
+    FASE 4: Genera UNA guideline por cluster (no por conversación).
+    FASE 5: Calcula métricas por cluster y deduplica patrones similares (>80%).
     """
 
     total = len(conversations)
@@ -1949,7 +1952,7 @@ async def extract_guidelines(
     from collections import defaultdict
 
     # ------------------------------------------------------------------ #
-    # Taxonomía de intenciones (consistente con el resto del toolset)      #
+    # Taxonomía de intenciones                                             #
     # ------------------------------------------------------------------ #
     intention_map = [
         ("Facturación",   ["factura", "cobro", "pago", "cargo", "reembolso", "facturar", "cufe"]),
@@ -1967,9 +1970,7 @@ async def extract_guidelines(
     ]
 
     # ------------------------------------------------------------------ #
-    # Definición de eventos semánticos                                     #
-    # Cada evento tiene: id, etiqueta legible, señales de detección,      #
-    # impacto base, riesgo de escalamiento innecesario                    #
+    # Catálogo de eventos semánticos                                       #
     # ------------------------------------------------------------------ #
     EVENT_CATALOG = [
         {
@@ -1982,9 +1983,11 @@ async def extract_guidelines(
                 "ya intenté la solución", "ya lo intenté", "hice los pasos",
                 "ya hice todos los pasos", "ya consulté", "ya la hice",
                 "ya la consulté", "ya lo hice", "ya intenté",
+                "ya hice lo del", "hice todo lo del", "ya lo del artículo",
+                "ya intenté la solución documentada", "ya intenté todo",
             ],
-            "impact":       55,
-            "esc_risk":     60,
+            "impact":   55,
+            "esc_risk": 60,
         },
         {
             "id":      "fin_repeats_solution",
@@ -1994,9 +1997,10 @@ async def extract_guidelines(
                 "revisa el artículo", "consulta la guía", "revisa la guía",
                 "consulta nuevamente", "revisa nuevamente", "consulta nuevamente la guía",
                 "te recomiendo revisar", "te invito a consultar",
+                "revisa este mismo artículo", "consulta esta guía",
             ],
-            "impact":       50,
-            "esc_risk":     55,
+            "impact":   50,
+            "esc_risk": 55,
         },
         {
             "id":      "problem_persists",
@@ -2005,10 +2009,11 @@ async def extract_guidelines(
                 "continúa igual", "sigue igual", "no se solucionó", "continúa el error",
                 "no funcionó", "no funciona", "no se resolvió", "persiste",
                 "aún no funciona", "todavía no funciona", "el problema continúa",
-                "no se ha resuelto",
+                "no se ha resuelto", "no funcionó", "sigue sin",
+                "el problema sigue", "continúa el problema",
             ],
-            "impact":       50,
-            "esc_risk":     50,
+            "impact":   50,
+            "esc_risk": 50,
         },
         {
             "id":      "user_urgency",
@@ -2018,8 +2023,8 @@ async def extract_guidelines(
                 "es crítico", "antes de cerrar", "para terminar mi turno",
                 "necesito resolver hoy", "con urgencia",
             ],
-            "impact":       45,
-            "esc_risk":     40,
+            "impact":   45,
+            "esc_risk": 40,
         },
         {
             "id":      "user_frustration",
@@ -2029,8 +2034,8 @@ async def extract_guidelines(
                 "no sirve", "molesto", "enojado", "fastidio", "mal servicio",
                 "no me ayuda", "frustr",
             ],
-            "impact":       45,
-            "esc_risk":     45,
+            "impact":   45,
+            "esc_risk": 45,
         },
         {
             "id":      "fin_generic_response",
@@ -2040,8 +2045,8 @@ async def extract_guidelines(
                 "respuesta automática", "no entiende", "no me respondió",
                 "no respondió mi pregunta", "cambió de tema",
             ],
-            "impact":       40,
-            "esc_risk":     35,
+            "impact":   40,
+            "esc_risk": 35,
         },
         {
             "id":      "fin_escalated",
@@ -2050,8 +2055,8 @@ async def extract_guidelines(
                 "me pasaron con", "me transfirieron", "agente humano",
                 "escalaron", "me dejaron en espera", "espera mientras te conecto",
             ],
-            "impact":       35,
-            "esc_risk":     30,
+            "impact":   35,
+            "esc_risk": 30,
         },
         {
             "id":      "problem_resolved",
@@ -2060,8 +2065,8 @@ async def extract_guidelines(
                 "gracias", "resuelto", "funcionó", "listo", "perfecto",
                 "excelente", "ya funciona", "se solucionó", "muchas gracias",
             ],
-            "impact":       0,
-            "esc_risk":     0,
+            "impact":   0,
+            "esc_risk": 0,
         },
         {
             "id":      "fin_requests_info",
@@ -2071,8 +2076,8 @@ async def extract_guidelines(
                 "¿cuál es el error", "¿qué mensaje", "por favor comparte",
                 "¿tienes el número",
             ],
-            "impact":       15,
-            "esc_risk":     10,
+            "impact":   15,
+            "esc_risk": 10,
         },
         {
             "id":      "user_multiple_attempts",
@@ -2081,8 +2086,8 @@ async def extract_guidelines(
                 "varias veces", "dos veces", "tres veces", "muchas veces",
                 "ya lo intenté varias", "lo he hecho varias",
             ],
-            "impact":       45,
-            "esc_risk":     50,
+            "impact":   45,
+            "esc_risk": 50,
         },
         {
             "id":      "user_blocked",
@@ -2092,38 +2097,92 @@ async def extract_guidelines(
                 "no puedo cerrar", "no puedo emitir", "no puedo facturar",
                 "bloqueado", "sin acceso", "no me deja", "no permite",
             ],
-            "impact":       55,
-            "esc_risk":     55,
+            "impact":   55,
+            "esc_risk": 55,
         },
         {
             "id":      "unnecessary_escalation_risk",
             "label":   "Escalamiento evitable detectado",
-            "signals": [],   # se infiere combinando eventos, no por señal directa
-            "impact":       50,
-            "esc_risk":     65,
+            "signals": [],
+            "impact":   50,
+            "esc_risk": 65,
         },
     ]
 
     # ------------------------------------------------------------------ #
-    # Función de detección de eventos en una conversación                 #
+    # FASE 1 — Detección de eventos por conversación                       #
     # ------------------------------------------------------------------ #
     def detect_events(text):
         found = []
         for ev in EVENT_CATALOG:
             if ev["id"] == "unnecessary_escalation_risk":
-                continue   # se evalúa después por combinación
+                continue
             if any(sig in text for sig in ev["signals"]):
                 found.append(ev["id"])
-
-        # Evento derivado: escalamiento evitable = docs agotados + FIN repite
         if "user_tried_docs" in found and "fin_repeats_solution" in found:
             found.append("unnecessary_escalation_risk")
-
         return found
 
+    conv_data = []
+    for i, conv in enumerate(conversations):
+        raw = conv.get("text", conv) if isinstance(conv, dict) else conv
+        t = raw.lower()
+        intention = "General"
+        for label, kws in intention_map:
+            if any(k in t for k in kws):
+                intention = label
+                break
+        events = detect_events(t)
+        conv_data.append({
+            "idx":       i + 1,
+            "intention": intention,
+            "events":    events,
+            "event_set": frozenset(events),
+            "text":      t,
+        })
+
     # ------------------------------------------------------------------ #
-    # Mapa de agrupación: secuencia de eventos → nombre de patrón         #
-    # Conversaciones con los mismos eventos forman el mismo patrón        #
+    # FASE 2 — Similitud Jaccard entre conjuntos de eventos               #
+    # ------------------------------------------------------------------ #
+    def jaccard(set_a, set_b):
+        a, b = set(set_a), set(set_b)
+        if not a and not b:
+            return 1.0
+        if not a or not b:
+            return 0.0
+        return len(a & b) / len(a | b)
+
+    # ------------------------------------------------------------------ #
+    # FASE 3 — Union-Find para construir clusters (umbral ≥ 70%)          #
+    # ------------------------------------------------------------------ #
+    CLUSTER_THRESHOLD = 0.70
+
+    parent = list(range(total))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    for i in range(total):
+        for j in range(i + 1, total):
+            sim = jaccard(conv_data[i]["event_set"], conv_data[j]["event_set"])
+            if sim >= CLUSTER_THRESHOLD:
+                union(i, j)
+
+    raw_clusters = defaultdict(list)
+    for i in range(total):
+        raw_clusters[find(i)].append(i)
+    clusters = list(raw_clusters.values())
+
+    # ------------------------------------------------------------------ #
+    # Nombrado de patrones                                                 #
     # ------------------------------------------------------------------ #
     PATTERN_NAMES = {
         frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists"]):
@@ -2158,9 +2217,7 @@ async def extract_guidelines(
     }
 
     def pattern_name_for(event_set):
-        # Busca la clave más específica (más elementos en común)
-        best_name = None
-        best_overlap = -1
+        best_name, best_overlap = None, -1
         for key, name in PATTERN_NAMES.items():
             overlap = len(key & event_set)
             if overlap == len(key) and overlap > best_overlap:
@@ -2168,14 +2225,13 @@ async def extract_guidelines(
                 best_overlap = overlap
         if best_name:
             return best_name
-        # Fallback: describir el evento de mayor impacto presente
         for ev in sorted(EVENT_CATALOG, key=lambda e: -e["impact"]):
             if ev["id"] in event_set and ev["id"] != "problem_resolved":
                 return f"Patrón: {ev['label']}"
         return "Comportamiento de FIN sin patrón catalogado"
 
     # ------------------------------------------------------------------ #
-    # Guideline templates por patrón de eventos                           #
+    # Guideline templates                                                  #
     # ------------------------------------------------------------------ #
     GUIDELINE_TEMPLATES = {
         "user_tried_docs+fin_repeats_solution": (
@@ -2235,32 +2291,163 @@ async def extract_guidelines(
         return tpl.format(intention=intention)
 
     # ------------------------------------------------------------------ #
-    # Analizar cada conversación → detectar intención + eventos           #
+    # FASE 4+5 — Una guideline y métricas por cluster                     #
     # ------------------------------------------------------------------ #
-    conv_data = []
+    def dominant_event_label(indices):
+        counts = defaultdict(int)
+        for i in indices:
+            for ev in conv_data[i]["events"]:
+                counts[ev] += 1
+        if not counts:
+            return "Sin evento dominante"
+        top_ev = max(counts, key=counts.get)
+        label = next((e["label"] for e in EVENT_CATALOG if e["id"] == top_ev), top_ev)
+        return label
 
-    for conv in conversations:
-        raw = conv.get("text", conv) if isinstance(conv, dict) else conv
-        t = raw.lower()
+    def avg_pairwise_similarity(indices):
+        if len(indices) == 1:
+            return 100
+        sims = []
+        for ii in range(len(indices)):
+            for jj in range(ii + 1, len(indices)):
+                sims.append(jaccard(
+                    conv_data[indices[ii]]["event_set"],
+                    conv_data[indices[jj]]["event_set"],
+                ))
+        return round(sum(sims) / len(sims) * 100) if sims else 100
 
-        intention = "General"
-        for label, kws in intention_map:
-            if any(k in t for k in kws):
-                intention = label
-                break
+    cluster_patterns = []
 
-        events = detect_events(t)
-        conv_data.append({"intention": intention, "events": events, "text": t})
+    for cluster_indices in clusters:
+        count = len(cluster_indices)
+        frequency_pct = round(count / total * 100)
+
+        # Unión de eventos del cluster (comportamiento representativo)
+        all_ev_sets = [conv_data[i]["event_set"] for i in cluster_indices]
+        # Intersección para eventos compartidos; unión como fallback si intersección es vacía
+        shared_events = all_ev_sets[0]
+        for s in all_ev_sets[1:]:
+            shared_events = shared_events & s
+        if not shared_events:
+            shared_events = all_ev_sets[0]
+            for s in all_ev_sets[1:]:
+                shared_events = shared_events | s
+
+        # Intención más frecuente en el cluster
+        intention_counts_local = defaultdict(int)
+        for i in cluster_indices:
+            intention_counts_local[conv_data[i]["intention"]] += 1
+        cluster_intention = max(intention_counts_local, key=intention_counts_local.get)
+
+        # Métricas
+        event_impacts = [ev["impact"] for ev in EVENT_CATALOG if ev["id"] in shared_events]
+        base_impact = int(sum(event_impacts) / len(event_impacts)) if event_impacts else 25
+
+        if frequency_pct >= 60:
+            impact_score = min(base_impact + 20, 100)
+        elif frequency_pct >= 30:
+            impact_score = min(base_impact + 10, 100)
+        else:
+            impact_score = base_impact
+
+        esc_risk_values = [ev["esc_risk"] for ev in EVENT_CATALOG if ev["id"] in shared_events]
+        avg_esc_risk = int(sum(esc_risk_values) / len(esc_risk_values)) if esc_risk_values else 20
+
+        if avg_esc_risk >= 55 or impact_score >= 65:
+            risk = "ALTO"
+        elif avg_esc_risk >= 35 or impact_score >= 45:
+            risk = "MEDIO"
+        else:
+            risk = "BAJO"
+
+        impact_label = "Alto" if impact_score >= 65 else ("Medio" if impact_score >= 45 else "Bajo")
+
+        priority_score = frequency_pct * 0.3 + impact_score * 0.3 + avg_esc_risk * 0.4
+        if priority_score >= 55 or risk == "ALTO":
+            priority = "Crítica"
+        elif priority_score >= 35 or risk == "MEDIO":
+            priority = "Alta"
+        elif priority_score >= 20:
+            priority = "Media"
+        else:
+            priority = "Baja"
+
+        pat_name = pattern_name_for(shared_events)
+        guideline_text = guideline_for_events(shared_events, cluster_intention)
+        esc_reduction = min(15 + frequency_pct // 2 + (avg_esc_risk // 5), 75)
+        auto_improvement = min(10 + frequency_pct // 3 + (impact_score // 8), 65)
+        justification_events = [ev["label"] for ev in EVENT_CATALOG if ev["id"] in shared_events]
+        dom_label = dominant_event_label(cluster_indices)
+        avg_sim = avg_pairwise_similarity(cluster_indices)
+
+        cluster_patterns.append({
+            "name":               pat_name,
+            "intention":          cluster_intention,
+            "count":              count,
+            "frequency_pct":      frequency_pct,
+            "impact_score":       impact_score,
+            "impact_label":       impact_label,
+            "risk":               risk,
+            "priority":           priority,
+            "guideline":          guideline_text,
+            "esc_reduction":      esc_reduction,
+            "auto_improvement":   auto_improvement,
+            "events":             list(shared_events),
+            "justification_events": justification_events,
+            "conv_indices":       [conv_data[i]["idx"] for i in cluster_indices],
+            "dominant_event":     dom_label,
+            "avg_similarity":     avg_sim,
+        })
 
     # ------------------------------------------------------------------ #
-    # Agrupar por (frozenset de eventos × intención)                      #
-    # Conversaciones que comparten los mismos eventos forman un patrón    #
+    # Deduplicación: fusionar patrones con similitud de guideline > 80%   #
     # ------------------------------------------------------------------ #
-    pattern_buckets = defaultdict(list)   # key → [conv_data, ...]
+    def text_jaccard(a, b):
+        wa, wb = set(a.lower().split()), set(b.lower().split())
+        if not wa and not wb:
+            return 1.0
+        if not wa or not wb:
+            return 0.0
+        return len(wa & wb) / len(wa | wb)
 
-    for d in conv_data:
-        key = (frozenset(d["events"]), d["intention"])
-        pattern_buckets[key].append(d)
+    MERGE_THRESHOLD = 0.80
+    merged = []
+    used = set()
+
+    # Ordenar por count desc para que el representante sea el cluster más grande
+    cluster_patterns.sort(key=lambda x: -x["count"])
+
+    for i, pat_i in enumerate(cluster_patterns):
+        if i in used:
+            continue
+        group = [pat_i]
+        used.add(i)
+        for j, pat_j in enumerate(cluster_patterns):
+            if j in used or j == i:
+                continue
+            sim = text_jaccard(pat_i["guideline"], pat_j["guideline"])
+            if sim > MERGE_THRESHOLD:
+                group.append(pat_j)
+                used.add(j)
+        if len(group) == 1:
+            merged.append(pat_i)
+        else:
+            # Fusionar: sumar counts, combinar índices de conversación, keep highest impact
+            merged_count = sum(g["count"] for g in group)
+            merged_freq  = round(merged_count / total * 100)
+            merged_convs = []
+            for g in group:
+                merged_convs.extend(g["conv_indices"])
+            best = max(group, key=lambda g: g["impact_score"])
+            best = dict(best)
+            best["count"]        = merged_count
+            best["frequency_pct"] = merged_freq
+            best["conv_indices"] = sorted(set(merged_convs))
+            best["esc_reduction"] = min(15 + merged_freq // 2 + (best["avg_esc_risk"] if "avg_esc_risk" in best else best["esc_reduction"] // 2), 75)
+            merged.append(best)
+
+    scored_patterns = merged
+    scored_patterns.sort(key=lambda x: (-x["impact_score"], -x["count"]))
 
     # ------------------------------------------------------------------ #
     # Conteos globales para resumen                                        #
@@ -2274,7 +2461,7 @@ async def extract_guidelines(
     for ev in all_events_flat:
         event_global_counts[ev] += 1
 
-    fin_ok_count   = sum(1 for d in conv_data if "problem_resolved" in d["events"])
+    fin_ok_count = sum(1 for d in conv_data if "problem_resolved" in d["events"])
     fin_fail_count = sum(
         1 for d in conv_data
         if any(e in d["events"] for e in [
@@ -2283,147 +2470,33 @@ async def extract_guidelines(
         ])
     )
 
-    # ------------------------------------------------------------------ #
-    # Construir patrones puntuados                                         #
-    # ------------------------------------------------------------------ #
-    scored_patterns = []
-    seen_pattern_names = set()
-
-    for (event_set, intention), convs_in_bucket in pattern_buckets.items():
-        count = len(convs_in_bucket)
-        frequency_pct = round(count / total * 100)
-
-        # Impacto base = promedio de impactos de los eventos presentes
-        event_impacts = [
-            ev["impact"] for ev in EVENT_CATALOG if ev["id"] in event_set
-        ]
-        base_impact = int(sum(event_impacts) / len(event_impacts)) if event_impacts else 25
-
-        # Ajuste por frecuencia
-        if frequency_pct >= 60:
-            impact_score = min(base_impact + 20, 100)
-        elif frequency_pct >= 30:
-            impact_score = min(base_impact + 10, 100)
-        else:
-            impact_score = base_impact
-
-        # Riesgo de escalamiento innecesario
-        esc_risk_values = [
-            ev["esc_risk"] for ev in EVENT_CATALOG if ev["id"] in event_set
-        ]
-        avg_esc_risk = int(sum(esc_risk_values) / len(esc_risk_values)) if esc_risk_values else 20
-
-        # Riesgo categórico
-        if avg_esc_risk >= 55 or impact_score >= 65:
-            risk = "ALTO"
-        elif avg_esc_risk >= 35 or impact_score >= 45:
-            risk = "MEDIO"
-        else:
-            risk = "BAJO"
-
-        # Impacto categórico
-        if impact_score >= 65:
-            impact_label = "Alto"
-        elif impact_score >= 45:
-            impact_label = "Medio"
-        else:
-            impact_label = "Bajo"
-
-        # Prioridad: considera frecuencia + riesgo + impacto + prob. esc. innecesario
-        priority_score = (
-            frequency_pct * 0.3
-            + impact_score * 0.3
-            + avg_esc_risk * 0.4
-        )
-        if priority_score >= 55 or risk == "ALTO":
-            priority = "Crítica"
-        elif priority_score >= 35 or risk == "MEDIO":
-            priority = "Alta"
-        elif priority_score >= 20:
-            priority = "Media"
-        else:
-            priority = "Baja"
-
-        # Nombre del patrón
-        pat_name = pattern_name_for(event_set)
-
-        # Deduplicar patrones con el mismo nombre (distintas intenciones se mantienen)
-        dedup_key = (pat_name, intention)
-        if dedup_key in seen_pattern_names:
-            continue
-        seen_pattern_names.add(dedup_key)
-
-        # Guideline
-        guideline_text = guideline_for_events(event_set, intention)
-
-        # Métricas
-        esc_reduction    = min(15 + frequency_pct // 2 + (avg_esc_risk // 5), 75)
-        auto_improvement = min(10 + frequency_pct // 3 + (impact_score // 8), 65)
-
-        # Justificación con eventos
-        justification_events = [
-            ev["label"] for ev in EVENT_CATALOG if ev["id"] in event_set
-        ]
-
-        scored_patterns.append({
-            "name":              pat_name,
-            "intention":         intention,
-            "count":             count,
-            "frequency_pct":     frequency_pct,
-            "impact_score":      impact_score,
-            "impact_label":      impact_label,
-            "risk":              risk,
-            "priority":          priority,
-            "guideline":         guideline_text,
-            "esc_reduction":     esc_reduction,
-            "auto_improvement":  auto_improvement,
-            "events":            list(event_set),
-            "justification_events": justification_events,
-        })
-
-    # Ordenar: impacto desc, luego frecuencia desc
-    scored_patterns.sort(key=lambda x: (-x["impact_score"], -x["count"]))
-
-    # ------------------------------------------------------------------ #
-    # Resumen general                                                      #
-    # ------------------------------------------------------------------ #
-    top_intention = max(intention_counts, key=intention_counts.get) if intention_counts else "General"
-    top_event_id  = max(event_global_counts, key=event_global_counts.get) if event_global_counts else None
-    top_event_label = next(
+    top_intention    = max(intention_counts, key=intention_counts.get) if intention_counts else "General"
+    top_event_id     = max(event_global_counts, key=event_global_counts.get) if event_global_counts else None
+    top_event_label  = next(
         (ev["label"] for ev in EVENT_CATALOG if ev["id"] == top_event_id), "No detectado"
     ) if top_event_id else "No detectado"
     top_pattern_name = scored_patterns[0]["name"] if scored_patterns else "No detectado"
 
     summary_lines = [
         f"Se analizaron {total} conversaciones del producto {product}.",
-        f"Intención más frecuente: {top_intention} "
-        f"({intention_counts[top_intention]} de {total} conversaciones).",
-        f"Evento más recurrente: {top_event_label} "
-        f"({event_global_counts.get(top_event_id, 0)} de {total} conversaciones).",
-        f"Patrón principal detectado: {top_pattern_name}.",
+        f"Intención más frecuente: {top_intention} ({intention_counts[top_intention]} de {total} conversaciones).",
+        f"Evento más recurrente: {top_event_label} ({event_global_counts.get(top_event_id, 0)} de {total} conversaciones).",
+        f"Clusters detectados: {len(clusters)}.",
+        f"Patrones únicos tras deduplicación: {len(scored_patterns)}.",
+        f"Patrón principal: {top_pattern_name}.",
         f"Conversaciones donde FIN respondió correctamente: {fin_ok_count}.",
         f"Conversaciones donde FIN probablemente falló: {fin_fail_count}.",
-        f"Patrones únicos detectados: {len(scored_patterns)}.",
     ]
 
-    # ------------------------------------------------------------------ #
-    # Eventos globales para la sección EVENTOS DETECTADOS                  #
-    # ------------------------------------------------------------------ #
-    # Eventos presentes en al menos 1 conversación, ordenados por frecuencia
     global_events_sorted = sorted(
-        [
-            (ev, event_global_counts[ev])
-            for ev in event_global_counts
-            if event_global_counts[ev] > 0
-        ],
+        [(ev, event_global_counts[ev]) for ev in event_global_counts if event_global_counts[ev] > 0],
         key=lambda x: -x[1],
     )
 
     # ------------------------------------------------------------------ #
-    # Recomendaciones generales                                            #
+    # Recomendaciones                                                      #
     # ------------------------------------------------------------------ #
     general_recs = []
-
     if fin_fail_count > fin_ok_count:
         general_recs.append(
             "La mayoría de conversaciones muestra fallos de FIN. "
@@ -2434,59 +2507,46 @@ async def extract_guidelines(
             "FIN resuelve correctamente la mayoría de los casos. "
             "Las guidelines propuestas cubren los escenarios residuales."
         )
-
     if event_global_counts.get("user_frustration", 0) > total // 3:
         general_recs.append(
             "Un tercio o más de los usuarios expresa frustración. "
             "Implementar guidelines de escalamiento condicional mejorará la experiencia."
         )
-
     if event_global_counts.get("user_urgency", 0) > 0:
         general_recs.append(
             "Hay conversaciones con urgencia explícita. "
             "Asegúrate de que exista una guideline de priorización de urgencias."
         )
-
     if event_global_counts.get("unnecessary_escalation_risk", 0) > 0:
         general_recs.append(
             "Se detectaron escalamientos evitables. "
             "La guideline de 'FIN repite solución ya agotada' es prioritaria."
         )
-
     if len(scored_patterns) > 3:
         general_recs.append(
             "Se detectaron múltiples patrones. Implementa primero los de prioridad Crítica "
             "y valida cada guideline con audit_guideline y score_guideline."
         )
-
     if not general_recs:
         general_recs.append(
             "El conjunto de conversaciones es representativo. "
             "Valida cada guideline propuesta con el equipo antes de publicar."
         )
 
-    # ------------------------------------------------------------------ #
-    # Lista de prioridad de implementación                                 #
-    # ------------------------------------------------------------------ #
-    priority_order = [p for p in scored_patterns if p["priority"] == "Crítica"]
+    priority_order  = [p for p in scored_patterns if p["priority"] == "Crítica"]
     priority_order += [p for p in scored_patterns if p["priority"] == "Alta"]
     priority_order += [p for p in scored_patterns if p["priority"] == "Media"]
     priority_order += [p for p in scored_patterns if p["priority"] == "Baja"]
 
-    # ------------------------------------------------------------------ #
-    # Observaciones finales                                                #
-    # ------------------------------------------------------------------ #
     observations = []
-
     if total < 5:
         observations.append(
             f"Se analizaron solo {total} conversaciones. "
             "Con más muestras los patrones serán más confiables."
         )
-
-    if len(scored_patterns) == 0:
+    if not scored_patterns:
         observations.append(
-            "No se detectaron patrones reconocibles en las conversaciones. "
+            "No se detectaron patrones reconocibles. "
             "Verifica que las conversaciones incluyan texto suficiente."
         )
     else:
@@ -2494,16 +2554,13 @@ async def extract_guidelines(
             "Usa detect_conflicts para verificar que las guidelines propuestas "
             "no colisionen entre sí antes de incorporarlas al repositorio."
         )
-
     if context:
         observations.append(f"Contexto adicional considerado: {context}")
 
     # ------------------------------------------------------------------ #
     # Construcción de la respuesta                                         #
     # ------------------------------------------------------------------ #
-    result_parts = [
-        f"**Extracción de Guidelines — Producto: {product.upper()}**\n"
-    ]
+    result_parts = [f"**Extracción de Guidelines — Producto: {product.upper()}**\n"]
 
     result_parts.append("ANÁLISIS DE CONVERSACIONES")
     result_parts.append(f"\nPRODUCTO\n\n{product.upper()}")
@@ -2513,18 +2570,27 @@ async def extract_guidelines(
     for line in summary_lines:
         result_parts.append(f"- {line}")
 
-    # Nueva sección: EVENTOS DETECTADOS
     result_parts.append("\nEVENTOS DETECTADOS\n")
     if global_events_sorted:
         for ev_id, ev_count in global_events_sorted:
-            label = next(
-                (e["label"] for e in EVENT_CATALOG if e["id"] == ev_id),
-                ev_id,
-            )
+            label = next((e["label"] for e in EVENT_CATALOG if e["id"] == ev_id), ev_id)
             result_parts.append(f"✓ {label} ({ev_count} de {total} conversaciones)")
     else:
         result_parts.append("No se detectaron eventos reconocibles.")
 
+    # ---- NUEVA SECCIÓN: CLUSTERS DETECTADOS ----
+    result_parts.append("\nCLUSTERS DETECTADOS\n")
+    for c_idx, cluster_indices in enumerate(clusters, start=1):
+        conv_nums = ", ".join(str(conv_data[i]["idx"]) for i in cluster_indices)
+        dom = dominant_event_label(cluster_indices)
+        avg_s = avg_pairwise_similarity(cluster_indices)
+        result_parts.append(f"Cluster #{c_idx}\n")
+        result_parts.append(f"Conversaciones\n\n{conv_nums}")
+        result_parts.append(f"\nEvento dominante\n\n{dom}")
+        result_parts.append(f"\nSimilitud promedio\n\n{avg_s}%")
+        result_parts.append("\n----------------------------------")
+
+    # ---- PATRONES DETECTADOS (uno por cluster, deduplicados) ----
     result_parts.append("\nPATRONES DETECTADOS\n")
 
     if not scored_patterns:
@@ -2536,6 +2602,10 @@ async def extract_guidelines(
         for idx, pat in enumerate(scored_patterns, start=1):
             result_parts.append(f"Patrón #{idx}\n")
             result_parts.append(f"Nombre\n\n{pat['name']}")
+            conv_list = ", ".join(str(c) for c in pat["conv_indices"])
+            result_parts.append(
+                f"\nConversaciones en este patrón\n\n{conv_list}"
+            )
             result_parts.append(
                 f"\nFrecuencia\n\n"
                 f"{pat['count']} de {total} conversaciones ({pat['frequency_pct']}%)"
@@ -2547,12 +2617,8 @@ async def extract_guidelines(
             for jev in pat["justification_events"]:
                 result_parts.append(f"- {jev}")
             result_parts.append(f"\nPrioridad\n\n{pat['priority']}")
-            result_parts.append(
-                f"\nReducción estimada de escalamientos\n\n~{pat['esc_reduction']}%"
-            )
-            result_parts.append(
-                f"\nMejora estimada de resolución autónoma\n\n~{pat['auto_improvement']}%"
-            )
+            result_parts.append(f"\nReducción estimada de escalamientos\n\n~{pat['esc_reduction']}%")
+            result_parts.append(f"\nMejora estimada de resolución autónoma\n\n~{pat['auto_improvement']}%")
             result_parts.append("\n-----------------------------------")
 
     result_parts.append("\nRECOMENDACIONES GENERALES\n")
