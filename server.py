@@ -2639,6 +2639,556 @@ async def extract_guidelines(
     return "\n".join(result_parts)
 
 
+@mcp.tool()
+async def architect_review(
+    product: str,
+    conversations: list,
+    current_guidelines: list = [],
+    objective: str = ""
+) -> str:
+    """
+    Orquestador del FIN Architect MCP. Ejecuta el pipeline completo:
+    extract_guidelines → generate_guideline → audit_guideline →
+    optimize_guideline → classify_guideline → detect_conflicts →
+    score_guideline → simulate_fin y produce un reporte ejecutivo unificado.
+    """
+
+    # ------------------------------------------------------------------ #
+    # Helpers para extraer secciones de los resultados de otras tools     #
+    # ------------------------------------------------------------------ #
+    def section(text, header):
+        """Extrae el bloque de texto que sigue a un encabezado hasta el siguiente."""
+        lines = text.split("\n")
+        capturing = False
+        result = []
+        for line in lines:
+            if line.strip().upper() == header.upper():
+                capturing = True
+                continue
+            if capturing:
+                if line.strip() and line.strip().upper() == line.strip() and len(line.strip()) > 3:
+                    # nuevo encabezado en mayúsculas → parar
+                    if line.strip() not in ("---", "-----------------------------------"):
+                        break
+                result.append(line)
+        return "\n".join(result).strip()
+
+    def first_lines(text, n=3):
+        return "\n".join(l for l in text.split("\n") if l.strip())[:400]
+
+    def extract_score(score_output):
+        """Extrae el puntaje numérico del output de score_guideline."""
+        import re
+        m = re.search(r"(\d{1,3})/100", score_output)
+        return int(m.group(1)) if m else 0
+
+    def extract_risk(text):
+        for level in ("ALTO", "MEDIO", "BAJO"):
+            if level in text.upper():
+                return level
+        return "DESCONOCIDO"
+
+    def clean(text):
+        """Elimina encabezados markdown y líneas vacías excesivas."""
+        lines = [l for l in text.split("\n") if not l.startswith("**Extracción") and
+                 not l.startswith("**Auditoría") and not l.startswith("**Clasificación") and
+                 not l.startswith("**Optimización") and not l.startswith("**Score") and
+                 not l.startswith("**Simulación")]
+        return "\n".join(lines).strip()
+
+    # ------------------------------------------------------------------ #
+    # PASO 1 — Extraer patrones                                            #
+    # ------------------------------------------------------------------ #
+    extraction_output = await extract_guidelines(
+        conversations=conversations,
+        product=product,
+        context=objective,
+    )
+
+    # Capturar patrones del texto de extracción
+    lines_ext = extraction_output.split("\n")
+    patterns_block = []
+    in_patterns = False
+    for line in lines_ext:
+        if line.strip() == "PATRONES DETECTADOS":
+            in_patterns = True
+            continue
+        if in_patterns and line.strip() in ("RECOMENDACIONES GENERALES", "PRIORIDAD DE IMPLEMENTACIÓN"):
+            break
+        if in_patterns:
+            patterns_block.append(line)
+
+    # Extraer nombres de patrones y guidelines propuestas del output
+    extracted_guidelines = []
+    current_name = None
+    for line in patterns_block:
+        if line.startswith("Nombre"):
+            current_name = None
+        elif current_name is None and line.strip() and not line.startswith("-") \
+                and not line.startswith("Patrón #") and not line.startswith("Frecuencia") \
+                and not line.startswith("Impacto") and not line.startswith("Riesgo") \
+                and not line.startswith("Prioridad") and not line.startswith("Reducción") \
+                and not line.startswith("Mejora") and not line.startswith("Justificación") \
+                and not line.startswith("Conversaciones") and not line.startswith("---"):
+            current_name = line.strip()
+        if line.startswith("Guideline propuesta"):
+            pass  # siguiente línea no vacía
+        elif current_name and line.strip() and line.strip() != current_name \
+                and not line.startswith("Guideline propuesta") and not line.startswith("Nombre") \
+                and not line.startswith("Frecuencia") and not line.startswith("Impacto") \
+                and not line.startswith("Riesgo") and not line.startswith("Prioridad") \
+                and not line.startswith("Reducción") and not line.startswith("Mejora") \
+                and not line.startswith("Justificación") and not line.startswith("Conversaciones") \
+                and not line.startswith("Patrón #") and not line.startswith("---"):
+            # Heurística: líneas largas sin prefijo → probablemente texto de guideline
+            if len(line.strip()) > 40:
+                extracted_guidelines.append(line.strip())
+                current_name = None
+
+    # Deduplicar
+    seen = set()
+    unique_extracted = []
+    for g in extracted_guidelines:
+        if g not in seen:
+            seen.add(g)
+            unique_extracted.append(g)
+    extracted_guidelines = unique_extracted
+
+    # ------------------------------------------------------------------ #
+    # PASO 2 — Generar guidelines desde cada conversación                  #
+    # ------------------------------------------------------------------ #
+    generated_guidelines = []
+    for i, conv in enumerate(conversations[:5]):  # máximo 5 para no saturar
+        raw = conv.get("text", conv) if isinstance(conv, dict) else conv
+        gen_out = await generate_guideline(
+            conversation=raw,
+            product=product,
+            objective=objective,
+        )
+        # Extraer la guideline generada del output
+        gen_lines = gen_out.split("\n")
+        capturing_gl = False
+        for line in gen_lines:
+            if "GUIDELINE PROPUESTA" in line.upper() or "GUIDELINE GENERADA" in line.upper():
+                capturing_gl = True
+                continue
+            if capturing_gl and line.strip() and not line.startswith("RIESGO") \
+                    and not line.startswith("IMPACTO") and not line.startswith("COMPORTAMIENTO") \
+                    and not line.startswith("INTENCIÓN") and not line.startswith("EMOCIÓN") \
+                    and not line.startswith("PROBLEMA") and not line.startswith("PRIORIDAD") \
+                    and not line.startswith("PUNTO") and not line.startswith("OBSERV") \
+                    and not line.startswith("RECOMEND") and not line.startswith("---") \
+                    and not line.startswith("**"):
+                generated_guidelines.append(line.strip())
+                break
+
+    # Combinar: extraídas + generadas + actuales, sin duplicados
+    all_guidelines = list(current_guidelines)
+    for g in extracted_guidelines + generated_guidelines:
+        if g and g not in all_guidelines:
+            all_guidelines.append(g)
+
+    # Asegurar que haya al menos una guideline para continuar el pipeline
+    if not all_guidelines:
+        all_guidelines = [
+            f"Cuando el usuario reporte un problema operativo en {product} "
+            "y haya seguido los pasos documentados sin resultado, "
+            "verifica el contexto antes de escalar al agente humano."
+        ]
+
+    # ------------------------------------------------------------------ #
+    # PASO 3 — Auditoría de cada guideline                                 #
+    # ------------------------------------------------------------------ #
+    audit_results = []
+    for g in all_guidelines:
+        audit_out = await audit_guideline(guideline=g, product=product)
+        has_issues = "⚠️ Problemas detectados" in audit_out
+        issues_lines = [l.strip() for l in audit_out.split("\n")
+                        if l.strip().startswith("- ") and "⚠️" not in l and "💡" not in l
+                        and "Recomendación" not in l]
+        audit_results.append({
+            "guideline": g,
+            "has_issues": has_issues,
+            "issues": issues_lines[:3],
+            "raw": audit_out,
+        })
+
+    guidelines_with_issues = [a for a in audit_results if a["has_issues"]]
+    guidelines_clean = [a for a in audit_results if not a["has_issues"]]
+
+    # ------------------------------------------------------------------ #
+    # PASO 4 — Optimización de guidelines con problemas                    #
+    # ------------------------------------------------------------------ #
+    optimized_map = {}   # guideline_original → guideline_optimizada
+    for a in guidelines_with_issues:
+        opt_out = await optimize_guideline(guideline=a["guideline"])
+        opt_lines = opt_out.split("\n")
+        capturing_opt = False
+        for line in opt_lines:
+            if "VERSIÓN OPTIMIZADA" in line.upper():
+                capturing_opt = True
+                continue
+            if capturing_opt and line.strip() and "RECOMENDACIÓN" not in line.upper():
+                optimized_map[a["guideline"]] = line.strip()
+                break
+
+    # Reconstruir lista final con optimizadas aplicadas
+    final_guidelines = []
+    for g in all_guidelines:
+        final_guidelines.append(optimized_map.get(g, g))
+    final_guidelines = [g for g in final_guidelines if g]
+
+    # ------------------------------------------------------------------ #
+    # PASO 5 — Clasificación                                               #
+    # ------------------------------------------------------------------ #
+    classification_results = []
+    for g in final_guidelines:
+        cls_out = await classify_guideline(guideline=g, product=product)
+        cat, sub, risk_cls, pri_cls = "General", "Instrucción Simple", "BAJO", "NORMAL"
+        for line in cls_out.split("\n"):
+            if "Categoría principal:" in line:
+                cat = line.split(":", 1)[-1].strip().replace("**", "")
+            elif "Subcategoría:" in line:
+                sub = line.split(":", 1)[-1].strip().replace("**", "")
+            elif "Nivel de riesgo:" in line:
+                risk_cls = line.split(":", 1)[-1].strip().replace("**", "")
+            elif "Prioridad:" in line:
+                pri_cls = line.split(":", 1)[-1].strip().replace("**", "")
+        classification_results.append({
+            "guideline": g,
+            "category": cat,
+            "subcategory": sub,
+            "risk": risk_cls,
+            "priority": pri_cls,
+        })
+
+    # ------------------------------------------------------------------ #
+    # PASO 6 — Detectar conflictos                                         #
+    # ------------------------------------------------------------------ #
+    conflicts_output = await detect_conflicts(
+        guidelines=final_guidelines,
+        product=product,
+    )
+    has_conflicts = "No se detectaron conflictos" not in conflicts_output \
+                    and "sin conflictos" not in conflicts_output.lower()
+    conflict_lines = [l.strip() for l in conflicts_output.split("\n")
+                      if l.strip().startswith("- ") or l.strip().startswith("⚠")][:10]
+
+    # ------------------------------------------------------------------ #
+    # PASO 7 — Puntaje de calidad de cada guideline                        #
+    # ------------------------------------------------------------------ #
+    score_results = []
+    for g in final_guidelines:
+        sc_out = await score_guideline(guideline=g, product=product)
+        score_val = extract_score(sc_out)
+        interpretation = ""
+        for line in sc_out.split("\n"):
+            if "/100 —" in line:
+                interpretation = line.split("—", 1)[-1].strip()
+                break
+        score_results.append({
+            "guideline": g,
+            "score": score_val,
+            "interpretation": interpretation,
+        })
+
+    scores = [r["score"] for r in score_results if r["score"] > 0]
+    avg_score = round(sum(scores) / len(scores)) if scores else 0
+    max_score = max(scores) if scores else 0
+    min_score = min(scores) if scores else 0
+
+    # Salud general: pondera score, auditoría limpia y sin conflictos
+    issue_penalty = len(guidelines_with_issues) * 5
+    conflict_penalty = 10 if has_conflicts else 0
+    health_score = max(0, min(100, avg_score - issue_penalty - conflict_penalty))
+
+    if health_score >= 80:
+        health_label = "ÓPTIMA"
+        health_emoji = "✅"
+    elif health_score >= 60:
+        health_label = "ACEPTABLE"
+        health_emoji = "⚠️"
+    elif health_score >= 40:
+        health_label = "REQUIERE MEJORAS"
+        health_emoji = "🔶"
+    else:
+        health_label = "CRÍTICA"
+        health_emoji = "🔴"
+
+    # ------------------------------------------------------------------ #
+    # PASO 8 — Simulación final con guidelines optimizadas                 #
+    # ------------------------------------------------------------------ #
+    # Usar la primera conversación como caso representativo
+    rep_conv_raw = conversations[0]
+    if isinstance(rep_conv_raw, dict):
+        rep_conv_raw = rep_conv_raw.get("text", str(rep_conv_raw))
+    simulation_output = await simulate_fin(
+        conversation=rep_conv_raw,
+        guidelines=final_guidelines,
+        product=product,
+        context=objective,
+    )
+
+    # Extraer secciones clave de la simulación
+    sim_decision = ""
+    sim_confidence = ""
+    sim_risk = ""
+    for line in simulation_output.split("\n"):
+        if "DECISIÓN" in line.upper() and not sim_decision:
+            sim_decision = line.strip()
+        if "CONFIANZA" in line.upper() and not sim_confidence:
+            sim_confidence = line.strip()
+        if "ESCALAMIENTO" in line.upper() and "RIESGO" in line.upper() and not sim_risk:
+            sim_risk = line.strip()
+
+    # ------------------------------------------------------------------ #
+    # Riesgos identificados                                                #
+    # ------------------------------------------------------------------ #
+    risks = []
+    if any(r["risk"] == "ALTO" for r in classification_results):
+        risks.append("Existen guidelines con riesgo ALTO. Deben revisarse antes del despliegue.")
+    if guidelines_with_issues:
+        n = len(guidelines_with_issues)
+        risks.append(f"{n} guideline(s) presentaron problemas en auditoría.")
+    if has_conflicts:
+        risks.append("Se detectaron conflictos entre guidelines. Pueden generar comportamientos contradictorios en FIN.")
+    if avg_score < 60:
+        risks.append("El puntaje promedio de calidad está por debajo del umbral recomendado (60/100).")
+    if health_score < 50:
+        risks.append("La salud general del producto es crítica. Prioriza optimización antes de publicar.")
+    if not risks:
+        risks.append("No se identificaron riesgos críticos. El conjunto de guidelines es estable.")
+
+    # ------------------------------------------------------------------ #
+    # Prioridad de implementación                                          #
+    # ------------------------------------------------------------------ #
+    urgent = [c for c in classification_results if c["priority"] == "URGENTE"]
+    high   = [c for c in classification_results if c["priority"] == "ALTA"]
+    normal = [c for c in classification_results if c["priority"] not in ("URGENTE", "ALTA")]
+
+    # ------------------------------------------------------------------ #
+    # Recomendaciones finales                                              #
+    # ------------------------------------------------------------------ #
+    recommendations = []
+    if guidelines_with_issues:
+        recommendations.append(
+            "Reemplaza las guidelines con problemas por sus versiones optimizadas antes de publicar."
+        )
+    if has_conflicts:
+        recommendations.append(
+            "Resuelve los conflictos detectados entre guidelines para evitar comportamientos inconsistentes."
+        )
+    if avg_score < 70:
+        recommendations.append(
+            "Mejora el puntaje promedio usando optimize_guideline en las guidelines con score < 70."
+        )
+    if len(final_guidelines) > 10:
+        recommendations.append(
+            "Considera consolidar guidelines similares para reducir la complejidad del conjunto de reglas."
+        )
+    recommendations.append(
+        "Valida cada guideline Crítica o Urgente en conversaciones reales antes del próximo despliegue."
+    )
+    if not any("audit" in r.lower() for r in recommendations):
+        recommendations.append(
+            "Ejecuta audit_guideline periódicamente para detectar degradación en la calidad de las guidelines."
+        )
+
+    # ------------------------------------------------------------------ #
+    # Próximos pasos                                                       #
+    # ------------------------------------------------------------------ #
+    next_steps = []
+    if urgent:
+        next_steps.append(
+            f"Revisar {len(urgent)} guideline(s) de prioridad URGENTE antes de cualquier otro paso."
+        )
+    if guidelines_with_issues:
+        next_steps.append(
+            "Aplicar las versiones optimizadas generadas en este review al repositorio de guidelines."
+        )
+    if has_conflicts:
+        next_steps.append(
+            "Ejecutar detect_conflicts nuevamente después de resolver los conflictos identificados."
+        )
+    next_steps.append(
+        "Ejecutar simulate_fin con más conversaciones representativas para validar el comportamiento esperado."
+    )
+    next_steps.append(
+        "Programar una revisión arquitectónica periódica con architect_review cuando se agreguen nuevas guidelines."
+    )
+
+    # ------------------------------------------------------------------ #
+    # Construcción del reporte ejecutivo                                   #
+    # ------------------------------------------------------------------ #
+    sep = "=" * 48
+
+    parts = [
+        f"{sep}",
+        "FIN ARCHITECT REVIEW",
+        f"{sep}\n",
+    ]
+
+    parts.append("PRODUCTO\n")
+    parts.append(f"{product.upper()}\n")
+
+    parts.append("OBJETIVO\n")
+    parts.append(f"{objective if objective else 'No especificado'}\n")
+
+    parts.append("RESUMEN EJECUTIVO\n")
+    total_convs = len(conversations)
+    total_gl = len(final_guidelines)
+    parts.append(
+        f"Se analizaron {total_convs} conversación(es) del producto {product}. "
+        f"Se identificaron {len(all_guidelines)} guidelines (incluyendo actuales y nuevas propuestas). "
+        f"Tras el pipeline completo, el conjunto final contiene {total_gl} guideline(s) con "
+        f"un puntaje promedio de {avg_score}/100 y una salud general de {health_score}/100 ({health_label}).\n"
+    )
+
+    parts.append("SALUD GENERAL DEL PRODUCTO\n")
+    parts.append(f"{health_emoji} {health_score}/100 — {health_label}\n")
+
+    parts.append("CONVERSACIONES ANALIZADAS\n")
+    parts.append(f"{total_convs} conversación(es)\n")
+
+    # Patrones del extraction
+    parts.append("PATRONES DETECTADOS\n")
+    if patterns_block:
+        for line in patterns_block:
+            if line.strip():
+                parts.append(line)
+    else:
+        parts.append("- No se detectaron patrones con suficiente recurrencia.\n")
+    parts.append("")
+
+    parts.append("NUEVAS GUIDELINES PROPUESTAS\n")
+    if final_guidelines:
+        for i, g in enumerate(final_guidelines, start=1):
+            cl = next((c for c in classification_results if c["guideline"] == g), {})
+            sc = next((s for s in score_results if s["guideline"] == g), {})
+            score_str = f"Score: {sc.get('score', '—')}/100" if sc else ""
+            cat_str = cl.get("category", "") if cl else ""
+            pri_str = cl.get("priority", "") if cl else ""
+            parts.append(f"{i}. {g}")
+            if cat_str or score_str or pri_str:
+                parts.append(f"   [{cat_str} | {pri_str} | {score_str}]")
+    else:
+        parts.append("- No se generaron nuevas guidelines.\n")
+    parts.append("")
+
+    parts.append("RESULTADO DE AUDITORÍA\n")
+    if guidelines_clean:
+        parts.append(f"✅ {len(guidelines_clean)} guideline(s) sin problemas críticos.")
+    if guidelines_with_issues:
+        parts.append(f"⚠️ {len(guidelines_with_issues)} guideline(s) con problemas detectados:")
+        for a in guidelines_with_issues:
+            short = a["guideline"][:80] + ("..." if len(a["guideline"]) > 80 else "")
+            parts.append(f"- \"{short}\"")
+            for issue in a["issues"]:
+                parts.append(f"  {issue}")
+    parts.append("")
+
+    parts.append("OPTIMIZACIONES APLICADAS\n")
+    if optimized_map:
+        for original, optimized in optimized_map.items():
+            orig_short = original[:70] + ("..." if len(original) > 70 else "")
+            opt_short = optimized[:70] + ("..." if len(optimized) > 70 else "")
+            parts.append(f"ANTES: {orig_short}")
+            parts.append(f"DESPUÉS: {opt_short}\n")
+    else:
+        parts.append("- No fue necesario aplicar optimizaciones.\n")
+
+    parts.append("CLASIFICACIÓN\n")
+    for c in classification_results:
+        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
+        parts.append(
+            f"- \"{short}\"\n"
+            f"  Categoría: {c['category']} | Subcategoría: {c['subcategory']} "
+            f"| Riesgo: {c['risk']} | Prioridad: {c['priority']}"
+        )
+    parts.append("")
+
+    parts.append("CONFLICTOS DETECTADOS\n")
+    if has_conflicts:
+        parts.append("⚠️ Se detectaron conflictos entre guidelines:")
+        for line in conflict_lines[:6]:
+            parts.append(line)
+    else:
+        parts.append("✅ No se detectaron conflictos entre las guidelines.\n")
+
+    parts.append("PUNTAJE DE CALIDAD\n")
+    parts.append(f"Promedio: {avg_score}/100 | Máximo: {max_score}/100 | Mínimo: {min_score}/100\n")
+    for s in sorted(score_results, key=lambda x: -x["score"]):
+        short = s["guideline"][:65] + ("..." if len(s["guideline"]) > 65 else "")
+        interp = f" — {s['interpretation']}" if s["interpretation"] else ""
+        parts.append(f"- {s['score']}/100{interp}")
+        parts.append(f"  \"{short}\"")
+    parts.append("")
+
+    parts.append("SIMULACIÓN FINAL\n")
+    # Incluir secciones relevantes de la simulación
+    sim_lines = simulation_output.split("\n")
+    in_sim_section = False
+    sim_sections_to_include = {
+        "INTENCIÓN DETECTADA", "EMOCIÓN DETECTADA", "PRIORIDAD",
+        "DECISIÓN DE FIN", "RIESGO DE ESCALAMIENTO", "NIVEL DE CONFIANZA",
+    }
+    current_sim_section = None
+    sim_buffer = []
+    for line in sim_lines:
+        stripped = line.strip().upper()
+        if stripped in sim_sections_to_include:
+            if current_sim_section and sim_buffer:
+                parts.append(f"{current_sim_section}")
+                for bl in sim_buffer:
+                    if bl.strip():
+                        parts.append(bl)
+            current_sim_section = line.strip()
+            sim_buffer = []
+        elif current_sim_section:
+            sim_buffer.append(line)
+    if current_sim_section and sim_buffer:
+        parts.append(f"{current_sim_section}")
+        for bl in sim_buffer[:3]:
+            if bl.strip():
+                parts.append(bl)
+    parts.append("")
+
+    parts.append("RIESGOS\n")
+    for r in risks:
+        parts.append(f"- {r}")
+    parts.append("")
+
+    parts.append("PRIORIDAD DE IMPLEMENTACIÓN\n")
+    idx = 1
+    for c in urgent:
+        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
+        parts.append(f"{idx}. [URGENTE] \"{short}\"")
+        idx += 1
+    for c in high:
+        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
+        parts.append(f"{idx}. [ALTA] \"{short}\"")
+        idx += 1
+    for c in normal:
+        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
+        parts.append(f"{idx}. [{c['priority']}] \"{short}\"")
+        idx += 1
+    parts.append("")
+
+    parts.append("RECOMENDACIONES\n")
+    for r in recommendations:
+        parts.append(f"- {r}")
+    parts.append("")
+
+    parts.append("PRÓXIMOS PASOS\n")
+    for i, step in enumerate(next_steps, start=1):
+        parts.append(f"{i}. {step}")
+    parts.append("")
+
+    parts.append(sep)
+
+    return "\n".join(parts)
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
