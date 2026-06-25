@@ -6587,6 +6587,327 @@ async def architect_review(
     return "\n".join(parts)
 
 
+@mcp.tool()
+async def ecosystem_review(
+    products: list,
+    context: str = ""
+) -> str:
+    """
+    Revisión cruzada del ecosistema FIN completo. Evalúa Knowledge, Guidelines,
+    escalamiento y cobertura en todos los productos simultáneamente.
+
+    Detecta conflictos cross-producto invisibles a repository_review y detect_conflicts,
+    audita cumplimiento de la regla de escalamiento en todo el ecosistema, y produce
+    un Ecosystem Health Score (EHS) compuesto que penaliza fallos inter-capa.
+
+    products : lista de dicts con 'nombre', 'guidelines' (list[str]),
+               'knowledge_articles' (list[str])
+    context  : contexto adicional opcional
+    """
+
+    import re as _re
+
+    sep  = "━" * 54
+    sep2 = "─" * 54
+
+    # ── Sub-call 1: repository_review ────────────────────────────────────────
+    rr_output = await repository_review(products=products, context=context)
+
+    # ── Sub-call 2: detect_conflicts por producto ─────────────────────────────
+    intra_conflicts_total = 0
+    intra_conflict_details = []
+    for prod in products:
+        pname      = prod.get("nombre", "Sin nombre")
+        pg         = prod.get("guidelines", [])
+        if not pg:
+            continue
+        dc_out = await detect_conflicts(guidelines=pg, product=pname, context=context)
+        # Extraer conteo de conflictos del output
+        m_cnt = _re.search(r"(\d+)\s+conflicto", dc_out, _re.IGNORECASE)
+        cnt   = int(m_cnt.group(1)) if m_cnt else 0
+        if cnt:
+            intra_conflicts_total += cnt
+            intra_conflict_details.append(f"[{pname}] {cnt} conflicto(s) intra-producto")
+
+    # ── Sub-call 3: recommend_improvements ───────────────────────────────────
+    ri_output = await recommend_improvements(
+        repository_review=rr_output,
+        knowledge_review="",
+        architect_review="",
+        context=context
+    )
+
+    # ── Extraer métricas de repository_review ────────────────────────────────
+    _m = _de.extract_metrics_from_reports(rr_output, "", "")
+    global_health      = _m["global_health"]
+    knowledge_debt     = _m["knowledge_debt"]
+    prod_blocked_cnt   = _m["prod_blocked"]
+    prod_high_risk     = _m["prod_high_risk"]
+    total_a_blocked    = _m["total_a_blocked"]
+    total_g_blocked    = _m["total_g_blocked"]
+    total_g_conflicts  = _m["total_g_conflicts"]
+    total_a_dups       = _m["total_a_dups"]
+    coverage_pct       = _m["coverage_pct"]
+    missing_cats_str   = _m["missing_cats_str"]
+    total_articles     = _m["total_articles"]
+    total_guidelines   = _m["total_guidelines"]
+
+    # ── Cross-product guideline analysis ─────────────────────────────────────
+    # Construir pool de guidelines con etiqueta de producto
+    pool = []
+    for prod in products:
+        pname = prod.get("nombre", "Sin nombre")
+        for g in prod.get("guidelines", []):
+            ws = _de.word_set(g)
+            pool.append({
+                "product": pname,
+                "text":    g,
+                "lower":   g.lower(),
+                "words":   ws,
+                "fast":    _de.kde_score_guideline_fast(g),
+            })
+
+    cross_conflicts    = []
+    cross_conflict_cnt = 0
+
+    # Solo comparar pares de productos distintos
+    for i in range(len(pool)):
+        for j in range(i + 1, len(pool)):
+            if pool[i]["product"] == pool[j]["product"]:
+                continue  # intra-producto: ya cubierto por detect_conflicts
+            sim = _de.jaccard(pool[i]["words"], pool[j]["words"])
+            if sim < 0.30:
+                continue
+            # Verificar si algún par de contradicción aplica
+            ti, tj = pool[i]["lower"], pool[j]["lower"]
+            for term_a, term_b in _de.GUIDELINE_CONTRADICTION_PAIRS:
+                if ((term_a in ti and term_b in tj) or
+                        (term_b in ti and term_a in tj)):
+                    sev = _de.conflict_severity_level(
+                        round(sim * 10) + (5 if "escalar" in term_a or "escalar" in term_b else 2)
+                    )
+                    cross_conflicts.append(
+                        f"[{pool[i]['product']} ↔ {pool[j]['product']}] "
+                        f"sim={sim:.2f} · '{term_a}' vs '{term_b}' · Severidad: {sev}"
+                    )
+                    cross_conflict_cnt += 1
+                    break  # un conflicto por par de guidelines
+
+    # ── Escalation compliance audit ───────────────────────────────────────────
+    anti_esc_violations = []
+    escalation_path_articles = []
+
+    for prod in products:
+        pname = prod.get("nombre", "Sin nombre")
+        for g in prod.get("guidelines", []):
+            if _de.detect_anti_escalation(g.lower(), use_repo_patterns=True):
+                anti_esc_violations.append(f"[{pname}] Guideline con regla anti-escalamiento")
+        for a in prod.get("knowledge_articles", []):
+            if _de.detect_anti_escalation(a.lower(), use_repo_patterns=True):
+                anti_esc_violations.append(f"[{pname}] Artículo con patrón anti-escalamiento")
+            if _de.detect_escalation_repo(a.lower()):
+                escalation_path_articles.append(pname)
+
+    escalation_path_open = len(escalation_path_articles) > 0
+    anti_esc_count       = len(anti_esc_violations)
+
+    # Escalation health (0–100)
+    esc_deduct_anti  = min(60, anti_esc_count * 20)
+    esc_deduct_path  = 30 if not escalation_path_open else 0
+    esc_deduct_cross = min(30, cross_conflict_cnt * 10)
+    escalation_health = max(0, 100 - esc_deduct_anti - esc_deduct_path - esc_deduct_cross)
+
+    if anti_esc_count == 0 and escalation_path_open and cross_conflict_cnt == 0:
+        esc_compliance_status  = "COMPLIANT"
+        esc_compliance_emoji   = "✅"
+    elif anti_esc_count > 0 and not escalation_path_open:
+        esc_compliance_status  = "CRITICAL VIOLATION"
+        esc_compliance_emoji   = "🚫"
+    elif anti_esc_count > 0 or not escalation_path_open:
+        esc_compliance_status  = "VIOLATION DETECTED"
+        esc_compliance_emoji   = "🔴"
+    else:
+        esc_compliance_status  = "COMPLIANT"
+        esc_compliance_emoji   = "✅"
+
+    # ── Attribute layer — completeness ────────────────────────────────────────
+    attr_no_guidelines = [p.get("nombre","?") for p in products if not p.get("guidelines")]
+    attr_no_articles   = [p.get("nombre","?") for p in products if not p.get("knowledge_articles")]
+    attr_complete      = len(products) - len(set(attr_no_guidelines + attr_no_articles))
+
+    # ── Ecosystem Health Score (EHS) ──────────────────────────────────────────
+    # Components (weight without workflow: knowledge 0.35, guideline 0.30, escalation 0.30, coverage 0.05)
+    guide_comp   = max(0, 100
+                       - total_g_blocked    * 8
+                       - intra_conflicts_total * 5
+                       - cross_conflict_cnt * 10)
+    guide_comp   = min(100, guide_comp)
+
+    coverage_num = _de.compute_coverage(" ".join(
+        a for prod in products for a in prod.get("knowledge_articles", [])
+    ))
+    ecosystem_coverage_pct = round(len(coverage_num[0]) / max(len(_de.TOPIC_CATEGORIES), 1) * 100)
+
+    ehs_raw = round(
+        global_health          * 0.35
+        + guide_comp           * 0.30
+        + escalation_health    * 0.30
+        + ecosystem_coverage_pct * 0.05
+    )
+
+    # Hard caps
+    if anti_esc_count > 0:
+        ehs_raw = min(ehs_raw, 60)
+    if not escalation_path_open:
+        ehs_raw = min(ehs_raw, 40)
+    if prod_blocked_cnt > 0:
+        ehs_raw = min(ehs_raw, 70)
+
+    ehs = ehs_raw
+
+    if ehs >= 85:
+        ehs_label, ehs_emoji = "SALUDABLE",   "🟢"
+    elif ehs >= 70:
+        ehs_label, ehs_emoji = "ACEPTABLE",   "🟡"
+    elif ehs >= 50:
+        ehs_label, ehs_emoji = "EN REVISIÓN", "🟠"
+    else:
+        ehs_label, ehs_emoji = "BLOQUEADO",   "🔴"
+
+    global_status, gs_emoji = _de.global_status_from_health(
+        global_health, prod_blocked_cnt, prod_high_risk
+    )
+    deploy_ready, deploy_emoji = _de.deployment_readiness(
+        prod_blocked_cnt, total_a_blocked, total_g_blocked,
+        global_health, knowledge_debt, prod_high_risk
+    )
+
+    debt_label, debt_emoji = _de.debt_label_emoji(knowledge_debt)
+
+    # ── Plan de acción desde recommend_improvements ───────────────────────────
+    _rc_bloq  = _re.search(r"CRÍTICO.*?\n(.*?)(?=──────|SPRINT|$)", ri_output, _re.DOTALL)
+    _rc_spr   = _re.search(r"SPRINT.*?\n(.*?)(?=──────|MEJORAS|$)", ri_output, _re.DOTALL)
+    _rc_mej   = _re.search(r"MEJORAS.*?\n(.*?)(?=──────|$)", ri_output, _re.DOTALL)
+
+    def _extract_actions(block, n=3):
+        if not block:
+            return []
+        lines = [l.strip() for l in block.group(1).splitlines() if l.strip()]
+        return [l for l in lines if l and not l.startswith("━") and not l.startswith("─")][:n]
+
+    plan_critico = _extract_actions(_rc_bloq)
+    plan_sprint  = _extract_actions(_rc_spr)
+    plan_mejoras = _extract_actions(_rc_mej)
+
+    # Añadir hallazgos cross-producto al plan si los hay
+    if cross_conflicts:
+        plan_critico.insert(0, f"Resolver {cross_conflict_cnt} conflicto(s) cross-producto detectado(s)")
+    if anti_esc_count:
+        plan_critico.insert(0, f"Eliminar {anti_esc_count} regla(s) anti-escalamiento (Invariante 6)")
+
+    # ── Composición del reporte ───────────────────────────────────────────────
+    parts = []
+
+    parts.append(sep)
+    parts.append("  ECOSYSTEM REVIEW — FIN ARCHITECT")
+    if context:
+        parts.append(f"  {context}")
+    total_prods = len(products)
+    parts.append(
+        f"  {total_prods} productos · "
+        f"{total_guidelines} guidelines · "
+        f"{total_articles} artículos"
+    )
+    parts.append(sep)
+
+    # Sección 1 — EHS
+    parts.append("")
+    parts.append("SECCIÓN 1 — ECOSYSTEM HEALTH SCORE")
+    parts.append(sep2)
+    parts.append(f"  EHS              : {ehs}/100 {ehs_emoji}")
+    parts.append(f"  Estado global    : {ehs_label}")
+    parts.append(f"  Salud repositorio: {global_health}/100 {gs_emoji} — {global_status}")
+    parts.append(f"  Despliegue       : {deploy_ready} {deploy_emoji}")
+    parts.append("")
+
+    # Sección 2 — Knowledge
+    parts.append("SECCIÓN 2 — KNOWLEDGE LAYER")
+    parts.append(sep2)
+    parts.append(f"  Salud global       : {global_health}/100")
+    parts.append(f"  Cobertura ecosistema: {ecosystem_coverage_pct}%")
+    parts.append(f"  Knowledge Debt     : {knowledge_debt} — {debt_label} {debt_emoji}")
+    parts.append(f"  Artículos bloqueados: {total_a_blocked}")
+    parts.append(f"  Duplicados          : {total_a_dups} par(es)")
+    if missing_cats_str:
+        parts.append(f"  Categorías faltantes: {missing_cats_str}")
+    parts.append("")
+
+    # Sección 3 — Guideline
+    parts.append("SECCIÓN 3 — GUIDELINE LAYER")
+    parts.append(sep2)
+    parts.append(f"  Conflictos intra-producto : {intra_conflicts_total}")
+    parts.append(f"  Conflictos cross-producto : {cross_conflict_cnt}")
+    parts.append(f"  Guidelines bloqueadas     : {total_g_blocked}")
+    if intra_conflict_details:
+        parts.append("")
+        parts.append("  Detalle intra-producto:")
+        for d in intra_conflict_details:
+            parts.append(f"    · {d}")
+    if cross_conflicts:
+        parts.append("")
+        parts.append("  Conflictos cross-producto:")
+        for c in cross_conflicts[:5]:
+            parts.append(f"    · {c}")
+    parts.append("")
+
+    # Sección 4 — Escalation Compliance
+    parts.append("SECCIÓN 4 — ESCALATION COMPLIANCE")
+    parts.append(sep2)
+    parts.append(f"  Estado            : {esc_compliance_status} {esc_compliance_emoji}")
+    parts.append(f"  Escalation Health : {escalation_health}/100")
+    parts.append(f"  Violaciones anti-esc: {anti_esc_count}")
+    parts.append(f"  Ruta de escalamiento: {'ABIERTA ✅' if escalation_path_open else 'CERRADA 🔴'}")
+    if anti_esc_violations:
+        parts.append("")
+        parts.append("  Violaciones detectadas:")
+        for v in anti_esc_violations[:5]:
+            parts.append(f"    · {v}")
+    parts.append("")
+
+    # Sección 5 — Attribute Layer
+    parts.append("SECCIÓN 5 — ATTRIBUTE LAYER")
+    parts.append(sep2)
+    parts.append(f"  Productos con cobertura completa: {attr_complete}/{total_prods}")
+    if attr_no_guidelines:
+        parts.append(f"  Sin guidelines  : {', '.join(attr_no_guidelines)}")
+    if attr_no_articles:
+        parts.append(f"  Sin artículos   : {', '.join(attr_no_articles)}")
+    parts.append("")
+
+    # Sección 6 — Plan de Acción
+    parts.append("SECCIÓN 6 — PLAN DE ACCIÓN")
+    parts.append(sep2)
+    if plan_critico:
+        parts.append("  CRÍTICO (resolver antes de operar):")
+        for item in plan_critico:
+            parts.append(f"    → {item}")
+    if plan_sprint:
+        parts.append("  SPRINT (próximo ciclo):")
+        for item in plan_sprint:
+            parts.append(f"    → {item}")
+    if plan_mejoras:
+        parts.append("  MEJORAS (siguiente versión):")
+        for item in plan_mejoras:
+            parts.append(f"    → {item}")
+    if not (plan_critico or plan_sprint or plan_mejoras):
+        parts.append("  Sin acciones prioritarias detectadas.")
+    parts.append("")
+
+    parts.append(sep)
+
+    return "\n".join(parts)
+
+
 # Transporte SSE para Claude
 sse = SseServerTransport("/messages/")
 
