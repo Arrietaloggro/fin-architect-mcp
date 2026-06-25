@@ -2876,6 +2876,14 @@ async def architect_review(
     else:
         health_label, health_emoji = "CRÍTICA", "🔴"
 
+    # HEALTH SCORE BREAKDOWN — contributions based on real values (deferred; filled below)
+    _hs_quality  = min(35, round(avg_score * 0.35))
+    _hs_coverage = 0   # filled after avg_cov is computed
+    _hs_maint_b  = 0   # filled after maint_idx is computed
+    _hs_conflict_pen = 0  # filled after n_conflicts_count is computed
+    _hs_dup_pen  = 0      # filled after merge counts are computed
+    _hs_abs_pen  = 0      # filled after gl_absolute_set is computed
+
     # PASO 8 — Simulación final
     rep_conv_raw = conversations[0]
     if isinstance(rep_conv_raw, dict):
@@ -3395,6 +3403,12 @@ async def architect_review(
 
     # IMPACTO ESTIMADO
     n_conflicts_count = len(conflict_lines)
+
+    # Fill deferred health score penalty components
+    _hs_conflict_pen = -(min(15, n_conflicts_count * 5)) if has_conflicts else 0
+    _hs_dup_pen      = -(min(10, (len(merge_log) + n_merge_engine) * 3))
+    _hs_abs_pen      = -(min(8,  len(gl_absolute_set) * 4))
+
     n_absolute_elim   = sum(
         1 for el in gl_to_eliminate
         if "absolutos" in el.get("reason", "").lower()
@@ -3660,6 +3674,48 @@ async def architect_review(
         conf_label  = "Muy Baja"
         conf_reason = f"Muy pocas conversaciones ({n_conv_cf}). El análisis es orientativo. No desplegar sin ampliar el corpus."
 
+    # CONFIDENCE REASONS — explicit bullet list
+    _conf_reasons = []
+    if n_conv_cf < 10:
+        _conf_reasons.append(f"Solo se analizaron {n_conv_cf} conversaciones (se recomiendan ≥ 10).")
+    if avg_cov < 50:
+        _conf_reasons.append(f"Cobertura funcional parcial del producto ({avg_cov}% promedio).")
+    if has_conflicts:
+        _conf_reasons.append(f"Existen {n_conflicts_count} conflicto(s) activo(s) entre guidelines.")
+    if (len(merge_log) + n_merge_engine) > 0:
+        _conf_reasons.append(f"Se detectaron {len(merge_log) + n_merge_engine} guideline(s) duplicada(s).")
+    if n_conv_cf < 5:
+        _conf_reasons.append("Algunas conclusiones se basan en muy pocos ejemplos.")
+    if n_pat_cf == 0:
+        _conf_reasons.append("No se detectaron patrones recurrentes con suficiente frecuencia.")
+    if mat_consistency < 60:
+        _conf_reasons.append(f"Consistencia interna baja ({mat_consistency}%), lo que reduce la fiabilidad del análisis.")
+    # If confidence is actually high, explain why instead
+    if confidence_raw >= 70:
+        _conf_reasons = [
+            f"Corpus de {n_conv_cf} conversaciones analizado.",
+            f"Cobertura funcional del {avg_cov}%.",
+            f"{n_pat_cf} patrón(es) detectado(s) con recurrencia.",
+            f"Consistencia interna del {mat_consistency}%.",
+        ]
+        if not has_conflicts:
+            _conf_reasons.append("Sin conflictos activos entre guidelines.")
+
+    # Complete health score breakdown (fill deferred fields after avg_cov/maint_idx are available)
+    _hs_coverage = min(20, round(avg_cov * 0.20))
+    _hs_maint_b  = min(10, round(maint_idx * 0.10))
+    # Build breakdown list: (label, value, is_positive)
+    _hs_breakdown = [
+        ("Calidad promedio de guidelines",    _hs_quality,      True),
+        ("Cobertura funcional",               _hs_coverage,     True),
+        ("Mantenibilidad del repositorio",    _hs_maint_b,      True),
+        ("Conflictos semánticos",             _hs_conflict_pen, False),
+        ("Guidelines duplicadas",             _hs_dup_pen,      False),
+        ("Reglas absolutas sin condición",    _hs_abs_pen,      False),
+    ]
+    # Remove zero-value negative items to keep the table clean
+    _hs_breakdown = [(l, v, p) for l, v, p in _hs_breakdown if v != 0]
+
     # 5. GUIDELINES HUÉRFANAS
     all_conv_text = " ".join(
         (c.get("text", c) if isinstance(c, dict) else c).lower()
@@ -3775,6 +3831,156 @@ async def architect_review(
     # GL index
     gl_index = {g: f"GL-{i+1}" for i, g in enumerate(final_guidelines)}
 
+    # DEPLOYMENT BLOCKERS
+    _blockers = []
+    if has_conflicts:
+        _blockers.append(("🔴", f"{n_conflicts_count} conflicto(s) semántico(s) sin resolver"))
+    _n_abs_elim = len([e for e in gl_to_eliminate if any(t in e.get("reason", "").lower() for t in ["absolut", "siempre", "nunca"])])
+    if _n_abs_elim:
+        _blockers.append(("🔴", f"{_n_abs_elim} regla(s) con términos absolutos sin condición"))
+    if health_score < 40:
+        _blockers.append(("🔴", f"Salud general crítica ({health_score}/100 — mínimo requerido: 80)"))
+    if n_eliminate_d > 0 and not _n_abs_elim:
+        _blockers.append(("🔴", f"{n_eliminate_d} guideline(s) con score por debajo del mínimo de producción"))
+    if confidence_raw < 50:
+        _blockers.append(("🟠", f"Confidence del análisis menor al 50% ({confidence_raw}%)"))
+    for _ua in uncovered_areas:
+        _blockers.append(("🟠", f"Cobertura insuficiente en área: {_ua}"))
+    if avg_score < 70:
+        _blockers.append(("🟠", f"Score promedio de guidelines por debajo de 70 ({avg_score}/100)"))
+
+    # TOP 5 ACTIONS by multi-factor impact score
+    _all_actions = []
+
+    # Eliminate actions
+    for _el in gl_to_eliminate:
+        _gl_ref_a = gl_index.get(_el["guideline"], "GL-?")
+        _impact_s = 90 if any(t in _el.get("reason","").lower() for t in ["absolut","conflicto"]) else 70
+        _all_actions.append({
+            "type": "ELIMINAR",
+            "ref": _gl_ref_a,
+            "desc": f"Eliminar {_gl_ref_a}: {_el['guideline'][:60]}{'...' if len(_el['guideline'])>60 else ''}",
+            "benefit": _el["reason"][:120],
+            "impact_label": "Muy Alto" if _impact_s >= 85 else "Alto",
+            "score": _impact_s,
+        })
+
+    # Conflict resolution
+    if has_conflicts:
+        _all_actions.append({
+            "type": "RESOLVER CONFLICTO",
+            "ref": "—",
+            "desc": f"Resolver {n_conflicts_count} conflicto(s) semántico(s) entre guidelines",
+            "benefit": "Elimina comportamientos contradictorios e impredecibles en FIN.",
+            "impact_label": "Muy Alto",
+            "score": 88,
+        })
+
+    # Merge actions
+    for _mp in merge_pairs_engine[:3]:
+        _gl_a = gl_index.get(_mp["original_a"], "GL-?")
+        _gl_b = gl_index.get(_mp["original_b"], "GL-?")
+        _all_actions.append({
+            "type": "FUSIONAR",
+            "ref": f"{_gl_a} + {_gl_b}",
+            "desc": f"Fusionar {_gl_a} y {_gl_b} (similitud {_mp['similarity']}%)",
+            "benefit": "Reduce redundancia y mejora consistencia del repositorio.",
+            "impact_label": "Alto",
+            "score": 72,
+        })
+
+    # Modify actions (top 3 by engine priority)
+    for _mod in gl_to_modify[:3]:
+        _gl_ref_m = gl_index.get(_mod["guideline"], "GL-?")
+        _mod_sc = 65 if _mod["impact"] == "Alto" else 50
+        _all_actions.append({
+            "type": "MODIFICAR",
+            "ref": _gl_ref_m,
+            "desc": f"Modificar {_gl_ref_m}: {_mod['guideline'][:55]}{'...' if len(_mod['guideline'])>55 else ''}",
+            "benefit": _mod["action"][:120],
+            "impact_label": _mod["impact"],
+            "score": _mod_sc,
+        })
+
+    # Coverage gaps
+    for _uc in uncovered_areas[:2]:
+        _all_actions.append({
+            "type": "AMPLIAR COBERTURA",
+            "ref": _uc,
+            "desc": f"Crear guideline para área sin cobertura: {_uc}",
+            "benefit": f"FIN tendrá instrucciones claras para escenarios de {_uc}.",
+            "impact_label": "Medio",
+            "score": 45,
+        })
+
+    _all_actions.sort(key=lambda x: -x["score"])
+    _top5_actions = _all_actions[:5]
+
+    # DEPLOYMENT DECISION — extended explanation
+    if deploy_color == "red":
+        _deploy_exec_motivo = (
+            "El repositorio contiene reglas contradictorias"
+            + (f" ({n_conflicts_count} conflicto(s))" if has_conflicts else "")
+            + (f" y {_n_abs_elim} regla(s) absolutas" if _n_abs_elim else "")
+            + " que pueden provocar comportamientos inconsistentes en FIN. "
+            "Se deben resolver los Deployment Blockers antes del siguiente despliegue."
+        )
+    elif deploy_color == "yellow":
+        _deploy_exec_motivo = (
+            f"El repositorio puede avanzar a producción con {n_prod_ready_d} guideline(s) validadas, "
+            "pero contiene elementos que deben corregirse antes de un despliegue completo. "
+            "Aplicar las acciones de mayor impacto listadas en TOP ACCIONES."
+        )
+    else:
+        _deploy_exec_motivo = (
+            f"Todas las guidelines superan el umbral de producción ({DECISION_PROD_THRESHOLD}/100). "
+            "No se detectaron conflictos ni reglas bloqueantes. "
+            "El repositorio puede desplegarse con confianza."
+        )
+
+    # ARCHITECT FINAL SUMMARY — 4 questions
+    _summary_sano = (
+        "Sí." if health_score >= 80
+        else f"No. Salud actual: {health_score}/100."
+    )
+    if has_conflicts and gl_to_eliminate:
+        _summary_problema = (
+            f"Conflictos semánticos activos ({n_conflicts_count}) combinados con {n_eliminate_d} regla(s) "
+            "absolutas o de baja calidad que generan escalamientos innecesarios."
+        )
+    elif has_conflicts:
+        _summary_problema = (
+            f"{n_conflicts_count} conflicto(s) semántico(s) que provocan comportamientos "
+            "contradictorios en FIN ante el mismo escenario."
+        )
+    elif gl_to_eliminate:
+        _summary_problema = (
+            f"{n_eliminate_d} guideline(s) con términos absolutos o score crítico que deben "
+            "eliminarse antes del despliegue."
+        )
+    elif len(merge_log) + n_merge_engine > 0:
+        _summary_problema = (
+            f"{len(merge_log) + n_merge_engine} guideline(s) redundante(s) que incrementan "
+            "la complejidad del repositorio sin aportar cobertura adicional."
+        )
+    else:
+        _summary_problema = (
+            f"Cobertura funcional incompleta en {len(uncovered_areas)} área(s). "
+            "FIN carece de instrucciones para esos escenarios."
+        )
+
+    if _top5_actions:
+        _t = _top5_actions[0]
+        _summary_accion = f"{_t['type']} {_t['ref']}: {_t['desc'][:80]}."
+    else:
+        _summary_accion = "Ampliar el corpus de conversaciones y ejecutar una nueva revisión."
+
+    _pct_esc = esc_base
+    _summary_resultado = (
+        f"Se estima una reducción de ~{_pct_esc}–{min(_pct_esc+10,70)}% en escalamientos "
+        f"y un incremento de ~{auto_base}–{auto_base+10}% en resolución autónoma."
+    )
+
     # ================================================================== #
     # CONSTRUCCIÓN DEL REPORTE v4                                         #
     # ================================================================== #
@@ -3784,7 +3990,7 @@ async def architect_review(
     parts = []
 
     # SECTION 1 — HEADER
-    parts += [sep, "FIN ARCHITECT REVIEW  ·  v4", f"{sep}\n"]
+    parts += [sep, "FIN ARCHITECT REVIEW  ·  v4.1", f"{sep}\n"]
     parts.append(
         f"PRODUCTO: {product.upper()}  |  SALUD: {health_emoji} {health_score}/100 — {health_label}"
     )
@@ -3792,6 +3998,26 @@ async def architect_review(
     parts.append(
         f"CONVERSACIONES: {total_convs}  |  CONFIANZA: {conf_label} ({confidence_raw}%)  |  MANTENIBILIDAD: {maint_label} ({maint_idx}%)"
     )
+    parts.append("")
+
+    # SECTION 1b — HEALTH SCORE BREAKDOWN
+    parts.append("HEALTH SCORE — Desglose del puntaje\n")
+    _hs_col_w = 42
+    for _lbl, _val, _pos in _hs_breakdown:
+        _prefix = "+" if _pos else ""
+        _sign   = f"{_prefix}{_val}"
+        _dots   = "." * max(1, _hs_col_w - len(_lbl))
+        parts.append(f"  {_lbl} {_dots} {_sign:>5}")
+    parts.append(f"  {'─' * _hs_col_w}{'─' * 8}")
+    parts.append(f"  {'TOTAL':>{_hs_col_w + 4}} {health_score:>5}")
+    parts.append("")
+
+    # SECTION 1c — CONFIDENCE BREAKDOWN
+    parts.append(f"CONFIDENCE — {conf_label} ({confidence_raw}%)\n")
+    if _conf_reasons:
+        parts.append("  Motivos:")
+        for _cr in _conf_reasons:
+            parts.append(f"  • {_cr}")
     parts.append("")
 
     # SECTION 2 — RESUMEN EJECUTIVO PARA PRODUCT MANAGER
@@ -3845,13 +4071,40 @@ async def architect_review(
     # ARCHITECT DECISION ENGINE
     parts += [div2, "ARCHITECT DECISION ENGINE", f"{div2}\n"]
 
+    # SECTION — DEPLOYMENT BLOCKERS
+    parts.append("► DEPLOYMENT BLOCKERS\n")
+    if _blockers:
+        for _b_icon, _b_txt in _blockers:
+            parts.append(f"  {_b_icon} {_b_txt}")
+    else:
+        parts.append("  No se identificaron bloqueadores para producción.")
+    parts.append("")
+
+    # SECTION — TOP ACCIONES
+    parts.append("► TOP ACCIONES — Ordenadas por impacto esperado\n")
+    if _top5_actions:
+        for _idx_a, _act in enumerate(_top5_actions, 1):
+            parts.append(f"  {_idx_a}. [{_act['type']}]  {_act['ref']}")
+            parts.append(f"     Acción:  {_act['desc']}")
+            parts.append(f"     Impacto: {_act['impact_label']}")
+            parts.append(f"     Beneficio: {_act['benefit']}")
+            parts.append("")
+    else:
+        parts.append("  No se identificaron acciones de impacto inmediato.\n")
+
     # SECTION 7 — DECISIONES ARQUITECTÓNICAS
-    parts.append("► LISTAS PARA PRODUCCIÓN\n")
+    parts.append("► KEEP — Listas para producción sin cambios\n")
     if gl_prod_ready:
         for item_p in gl_prod_ready:
-            gl_ref = gl_index.get(item_p["guideline"], "GL-?")
+            gl_ref  = gl_index.get(item_p["guideline"], "GL-?")
             short_p = item_p["guideline"][:70] + ("..." if len(item_p["guideline"]) > 70 else "")
             parts.append(f"  ✅ {gl_ref}  [{item_p['score']}/100]  {short_p}")
+        parts.append("")
+        parts.append("  Justificación:")
+        parts.append("  • Alta calidad técnica (score ≥ 90/100).")
+        parts.append("  • Sin conflictos semánticos detectados.")
+        parts.append("  • Sin problemas en auditoría.")
+        parts.append("  • Cobertura adecuada del escenario que gobiernan.")
     else:
         parts.append("  — Ninguna guideline cumple todos los criterios de producción en este ciclo.")
     parts.append("")
@@ -3915,9 +4168,16 @@ async def architect_review(
         parts.append("")
 
     # SECTION 8 — DECISIÓN DE DESPLIEGUE
-    parts += [div2, "DECISIÓN DE DESPLIEGUE\n"]
+    parts += [div2, "DECISIÓN DEL ARQUITECTO\n"]
     parts.append(f"  {deploy_status}\n")
-    parts.append(f"  {deploy_just}\n")
+    parts.append(f"  Motivo:")
+    parts.append(f"  {_deploy_exec_motivo}")
+    parts.append("")
+    if _blockers and deploy_color != "green":
+        parts.append("  Se recomienda resolver los Deployment Blockers antes del siguiente despliegue.")
+    elif deploy_color == "yellow":
+        parts.append(f"  Desplegar únicamente las {n_prod_ready_d} guideline(s) clasificadas en KEEP.")
+    parts.append("")
 
     # SECTION 9 — IMPACTO ESTIMADO
     parts += [div2, "IMPACTO ESTIMADO\n"]
@@ -4063,13 +4323,22 @@ async def architect_review(
             parts.append(f"  {sim_label_s}: {sim_values[sim_key]}")
     parts.append("")
 
-    # CONCLUSIÓN DEL ARQUITECTO
+    # CONCLUSIÓN DEL ARQUITECTO (detallada)
     parts.append("CONCLUSIÓN DEL ARQUITECTO\n")
     parts.append(f"  Estado actual\n  {estado}\n")
     parts.append(f"  Principal riesgo\n  {principal_risk}\n")
     parts.append(f"  Mayor oportunidad\n  {oportunidad}\n")
     parts.append(f"  Recomendación inmediata\n  {immediate_rec}\n")
     parts.append(f"  Siguiente revisión\n  {next_review}\n")
+
+    parts.append(sep)
+
+    # RESUMEN FINAL DEL ARQUITECTO — 4 preguntas, máx 8 líneas
+    parts += ["\n" + div2, "RESUMEN FINAL DEL ARQUITECTO", f"{div2}\n"]
+    parts.append(f"  ¿El repositorio está sano?\n  {_summary_sano}\n")
+    parts.append(f"  ¿Cuál es el principal problema?\n  {_summary_problema}\n")
+    parts.append(f"  ¿Cuál es la acción más importante?\n  {_summary_accion}\n")
+    parts.append(f"  ¿Qué resultado se espera después de aplicarla?\n  {_summary_resultado}\n")
 
     parts.append(sep)
 
