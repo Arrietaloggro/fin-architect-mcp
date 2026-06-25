@@ -2021,6 +2021,617 @@ async def optimize_article(
 
 
 @mcp.tool()
+async def knowledge_review(
+    product: str,
+    articles: list,
+    context: str = ""
+) -> str:
+    """
+    Analiza el conjunto completo de artículos de conocimiento de un producto
+    y genera un diagnóstico ejecutivo de preparación para FIN.
+    Reutiliza la lógica de detección de audit_knowledge y optimize_article.
+    No modifica los artículos. Solo analiza.
+    """
+
+    import re as _re
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # ANÁLISIS INDIVIDUAL — misma lógica que audit_knowledge                  #
+    # ════════════════════════════════════════════════════════════════════════ #
+    def _analyze(article_text):
+        text       = article_text.strip()
+        text_lower = text.lower()
+        words      = text.split()
+        word_count = len(words)
+        sentences  = [s.strip() for s in _re.split(r'[.!?]+', text) if s.strip()]
+        lines      = [l.strip() for l in text.splitlines() if l.strip()]
+
+        _title_m = _re.match(r'^#+\s*(.+?)$', text.strip(), _re.MULTILINE)
+        title = _title_m.group(1).strip() if _title_m else (lines[0] if lines else "Sin título")
+
+        has_numbered_steps = bool(_re.search(r'(?:^|\n)\s*\d+[\.\)]\s+\S', text))
+        has_bullets        = bool(_re.search(r'(?:^|\n)\s*[-•*]\s+\S', text))
+        has_sections       = bool(_re.search(r'(?:^|\n)\s*#{1,3}\s+\S|(?:^|\n)[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s]{3,}:', text))
+
+        step_verbs_es = [
+            "hacer clic", "selecciona", "ingresa", "abre", "cierra", "navega",
+            "accede", "verifica", "confirma", "guarda", "descarga", "instala",
+            "actualiza", "reinicia", "copia", "pega", "escribe", "busca",
+            "haz clic", "pulsa", "presiona", "dirígete", "ve a", "entra",
+            "click", "ir a", "login", "inicia sesión",
+        ]
+        step_hits = [v for v in step_verbs_es if v in text_lower]
+
+        absolute_terms = ["siempre", "nunca", "todos", "ninguno", "cualquier caso"]
+        absolute_hits  = [t for t in absolute_terms if t in text_lower]
+
+        vague_phrases = [
+            "de alguna manera", "como sea posible", "en la medida",
+            "según corresponda", "a discreción", "podría", "quizás",
+            "tal vez", "depende", "en algunos casos", "eventualmente",
+            "normalmente", "generalmente", "usualmente",
+        ]
+        vague_hits = [p for p in vague_phrases if p in text_lower]
+
+        escalation_signals = [
+            "escalar", "escala", "contacta a soporte", "contactar soporte",
+            "comunícate con", "transfiere", "agente", "asesor", "caso de soporte",
+            "ticket", "si el problema persiste", "si no se resuelve",
+        ]
+        has_escalation = any(e in text_lower for e in escalation_signals)
+        anti_escalation_rule = bool(_re.search(
+            r'nunca\s+(escal|contact|transf)\w*|no\s+(escal|contact|transf)\w*\s+este',
+            text_lower
+        ))
+
+        loop_patterns = [
+            "vuelve a intentar", "consulta nuevamente este artículo",
+            "reinicia nuevamente", "repite los pasos", "inténtalo otra vez",
+            "vuelve a reiniciar", "vuelve a intentar el procedimiento",
+            "repite el procedimiento", "intenta de nuevo", "vuelve a empezar",
+        ]
+        loop_hits  = [p for p in loop_patterns if p in text_lower]
+        loop_count = len(loop_hits)
+        if bool(_re.search(r'(vuelve al paso|regresa al paso|repite desde el paso|vuelve a la sección)', text_lower)):
+            loop_count += 1
+            loop_hits.append("referencia circular")
+        if loop_count == 0:       loop_risk_level = "BAJO"
+        elif loop_count == 1:     loop_risk_level = "MEDIO"
+        elif loop_count <= 3:     loop_risk_level = "ALTO"
+        else:                     loop_risk_level = "CRÍTICO"
+
+        kde_blockers = []
+        if loop_risk_level == "CRÍTICO":    kde_blockers.append("loop CRÍTICO")
+        if anti_escalation_rule:            kde_blockers.append("regla anti-escalamiento")
+        has_kde_blocker = bool(kde_blockers)
+
+        # Criterios — mismos pesos que audit_knowledge
+        clarity = 12
+        if vague_hits:       clarity -= min(len(vague_hits)*2, 8)
+        if word_count < 20:  clarity -= 5
+        clarity = max(clarity, 0)
+
+        structure = 10
+        if not has_numbered_steps: structure -= 4
+        if not has_sections:       structure -= 3
+        if not has_bullets and not has_numbered_steps: structure -= 3
+        structure = max(structure, 0)
+
+        steps_score = 12
+        if not step_hits:                             steps_score -= 7
+        if not has_numbered_steps and word_count > 60: steps_score -= 3
+        steps_score = max(steps_score, 0)
+
+        coverage_signals = [
+            "causa", "síntoma", "solución", "resultado", "verificar", "error",
+            "problema", "cuándo", "prerequisito", "requisito", "nota", "importante",
+            "advertencia", "aviso", "ejemplo",
+        ]
+        cov_hits = [s for s in coverage_signals if s in text_lower]
+        coverage = 8
+        if len(cov_hits) < 2:   coverage -= 5
+        elif len(cov_hits) < 4: coverage -= 2
+        coverage = max(coverage, 0)
+
+        ambiguity = 10
+        if absolute_hits: ambiguity -= min(len(absolute_hits)*3, 8)
+        ambiguity = max(ambiguity, 0)
+
+        length_score = 8
+        if word_count < 30:    length_score -= 6
+        elif word_count < 60:  length_score -= 3
+        elif word_count > 800: length_score -= 4
+        elif word_count > 400: length_score -= 2
+        length_score = max(length_score, 0)
+
+        consistency = 8
+        uses_tu    = bool(_re.search(r'\b(haz|selecciona|entra|ve a|escribe|abre)\b', text_lower))
+        uses_usted = bool(_re.search(r'\b(haga|seleccione|entre|vaya|escriba|abra)\b', text_lower))
+        if uses_tu and uses_usted: consistency -= 3
+        consistency = max(consistency, 0)
+
+        terminology = 8
+        technical_terms = ["api","webhook","endpoint","token","oauth","json","xml",
+                           "cufe","dian","rut","nit","uuid","erp","crm","ide"]
+        undefined_terms = [t for t in technical_terms if t in text_lower]
+        if undefined_terms:
+            has_defs = any(w in text_lower for w in ["significa","es decir","se refiere","corresponde a"])
+            if not has_defs: terminology -= min(len(undefined_terms)*2, 6)
+        terminology = max(terminology, 0)
+
+        fin_positive = [
+            "el usuario debe","el cliente debe","verifique","confirme",
+            "paso","primero","luego","después","finalmente","a continuación",
+            "si el error persiste","si el problema continúa","si no funciona",
+        ]
+        fin_usability = 10
+        if not any(p in text_lower for p in fin_positive): fin_usability -= 5
+        fin_usability = max(fin_usability, 0)
+
+        escalation_score = 8
+        if anti_escalation_rule:   escalation_score -= 7
+        elif has_escalation:
+            esc_cond = any(c in text_lower for c in ["si el problema persiste","si no se resuelve","si el error continúa"])
+            if not esc_cond: escalation_score -= 4
+        else:                      escalation_score -= 5
+        escalation_score = max(escalation_score, 0)
+
+        maintainability = 7
+        date_patterns = [
+            _re.compile(r'\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+\d{4}\b', _re.I),
+            _re.compile(r'\b\d{1,2}/\d{1,2}/\d{2,4}\b'),
+        ]
+        date_refs = []
+        for dp in date_patterns: date_refs.extend(dp.findall(text))
+        if date_refs: maintainability -= 3
+        maintainability = max(maintainability, 0)
+
+        risky_actions = ["eliminar","borrar","formatear","reinstalar","resetear a fábrica",
+                         "eliminar todos los datos","vaciar la base","desinstalar"]
+        operational_risk_score = 7
+        risky_hits = [r for r in risky_actions if r in text_lower]
+        if risky_hits: operational_risk_score -= min(len(risky_hits)*2, 5)
+        operational_risk_score = max(operational_risk_score, 0)
+
+        _raw_total = max(0, min(100,
+            clarity + structure + steps_score + coverage + ambiguity
+            + length_score + consistency + terminology + fin_usability
+            + escalation_score + maintainability + operational_risk_score
+        ))
+
+        kde_health = _raw_total
+        if absolute_hits:              kde_health = max(0, kde_health - min(len(absolute_hits)*2, 8))
+        if loop_risk_level == "ALTO":      kde_health = max(0, kde_health - 8)
+        elif loop_risk_level == "CRÍTICO": kde_health = max(0, kde_health - 15)
+        if has_kde_blocker:            kde_health = min(kde_health, 60)
+        kde_health = max(0, min(100, kde_health))
+
+        if has_kde_blocker:       deploy = "BLOQUEADO"
+        elif kde_health < 50:     deploy = "NO LISTO"
+        elif kde_health < 78:     deploy = "LISTO CON RECOMENDACIONES"
+        else:                     deploy = "LISTO"
+
+        problems = []
+        if loop_count > 0:          problems.append(f"Loop {loop_risk_level}")
+        if anti_escalation_rule:    problems.append("Regla anti-escalamiento")
+        elif not has_escalation:    problems.append("Sin escalamiento")
+        if absolute_hits:           problems.append(f"Absolutos: {', '.join(absolute_hits)}")
+        if not step_hits:           problems.append("Sin verbos de acción")
+        if not has_numbered_steps:  problems.append("Sin pasos numerados")
+        if word_count < 30:         problems.append("Artículo demasiado corto")
+
+        return {
+            "title":               title,
+            "word_count":          word_count,
+            "kde_health":          kde_health,
+            "loop_risk_level":     loop_risk_level,
+            "loop_count":          loop_count,
+            "loop_hits":           loop_hits,
+            "anti_escalation_rule": anti_escalation_rule,
+            "has_escalation":      has_escalation,
+            "absolute_hits":       absolute_hits,
+            "has_kde_blocker":     has_kde_blocker,
+            "kde_blockers":        kde_blockers,
+            "deploy":              deploy,
+            "problems":            problems,
+            "text_lower":          text_lower,
+            "words_set":           frozenset(text_lower.split()),
+        }
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # VALIDACIÓN DE ENTRADA                                                    #
+    # ════════════════════════════════════════════════════════════════════════ #
+    if not articles:
+        return "No se proporcionaron artículos para analizar."
+
+    analyses = [_analyze(str(a)) for a in articles]
+    n = len(analyses)
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # MÉTRICAS AGREGADAS                                                       #
+    # ════════════════════════════════════════════════════════════════════════ #
+    avg_health         = round(sum(a["kde_health"] for a in analyses) / n)
+    blocked_count      = sum(1 for a in analyses if a["deploy"] == "BLOQUEADO")
+    not_ready_count    = sum(1 for a in analyses if a["deploy"] == "NO LISTO")
+    ready_count        = sum(1 for a in analyses if a["deploy"] == "LISTO")
+    ready_recs_count   = sum(1 for a in analyses if a["deploy"] == "LISTO CON RECOMENDACIONES")
+    loop_articles      = [a for a in analyses if a["loop_risk_level"] in ("ALTO","CRÍTICO")]
+    anti_esc_articles  = [a for a in analyses if a["anti_escalation_rule"]]
+    no_esc_list        = [a for a in analyses if not a["has_escalation"] and not a["anti_escalation_rule"]]
+    abs_articles       = [a for a in analyses if a["absolute_hits"]]
+
+    # Madurez general
+    if avg_health >= 85 and blocked_count == 0:
+        maturity = "Excelente"; maturity_emoji = "✅"
+    elif avg_health >= 70 and blocked_count == 0:
+        maturity = "Alta";      maturity_emoji = "🟢"
+    elif avg_health >= 55:
+        maturity = "Media";     maturity_emoji = "🔵"
+    elif avg_health >= 40:
+        maturity = "Baja";      maturity_emoji = "🔶"
+    else:
+        maturity = "Crítica";   maturity_emoji = "🔴"
+
+    # Conclusión global
+    if blocked_count >= max(1, round(n * 0.3)) or avg_health < 40:
+        conclusion = "BLOCKED";                concl_emoji = "🚫"
+        concl_why  = (f"{blocked_count} de {n} artículos BLOQUEADOS. "
+                      "La Base de Conocimiento presenta riesgos críticos que impedirán el funcionamiento autónomo de FIN.")
+    elif avg_health < 55 or blocked_count > 0:
+        conclusion = "NOT READY";              concl_emoji = "🔴"
+        _why_parts = []
+        if avg_health < 55:
+            _why_parts.append(f"Score promedio insuficiente ({avg_health}/100).")
+        if blocked_count > 0:
+            _why_parts.append(f"{blocked_count} artículo(s) BLOQUEADO(s) que impiden el despliegue.")
+        _why_parts.append("Se requieren correcciones antes del despliegue.")
+        concl_why = " ".join(_why_parts)
+    elif avg_health < 78 or not_ready_count > 0 or loop_articles:
+        conclusion = "READY WITH RECOMMENDATIONS"; concl_emoji = "⚠️"
+        concl_why  = (f"Score promedio aceptable ({avg_health}/100) con áreas de mejora. "
+                      f"{ready_recs_count + not_ready_count} artículo(s) requieren optimización antes del despliegue completo.")
+    else:
+        conclusion = "READY";                  concl_emoji = "✅"
+        concl_why  = (f"Score promedio {avg_health}/100. {ready_count} de {n} artículos listos para producción. "
+                      "La Base de Conocimiento cumple los estándares para uso autónomo por FIN.")
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # COBERTURA TEMÁTICA                                                       #
+    # ════════════════════════════════════════════════════════════════════════ #
+    topic_keywords = {
+        "Facturación":    ["factura","facturación","facturar","documento","cufe","dian","electrónica"],
+        "Caja":           ["caja","cajero","apertura","cierre de caja","turno","cuadre"],
+        "Inventario":     ["inventario","stock","producto","bodega","conteo","kardex"],
+        "Sincronización": ["sincroniz","sincronización","sync","pendiente","offline"],
+        "Permisos":       ["permiso","permisos","acceso","rol","perfil","autorización"],
+        "Usuarios":       ["usuario","usuarios","contraseña","clave","cuenta","login","sesión"],
+        "Integraciones":  ["integración","api","webhook","conector","tercero","erp"],
+        "Reportes":       ["reporte","informe","estadística","exportar","resumen de ventas"],
+        "Configuración":  ["configuración","configurar","ajuste","parámetro","setting"],
+        "Ventas":         ["venta","ventas","transacción","cobro","pago"],
+        "Soporte":        ["soporte","error","problema","fallo","incidente"],
+    }
+    coverage_map = {}
+    for topic, kws in topic_keywords.items():
+        matching = [a for a in analyses if any(kw in a["text_lower"] for kw in kws)]
+        if not matching:
+            coverage_map[topic] = ("Sin cobertura", [])
+        else:
+            avg_h = round(sum(m["kde_health"] for m in matching) / len(matching))
+            lbl = "Alta" if avg_h >= 70 else "Media" if avg_h >= 50 else "Baja"
+            coverage_map[topic] = (lbl, [m["title"] for m in matching])
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # ARTÍCULOS CRÍTICOS                                                       #
+    # ════════════════════════════════════════════════════════════════════════ #
+    critical_articles = [a for a in analyses if a["kde_health"] < 60 or a["has_kde_blocker"]]
+    critical_articles.sort(key=lambda a: a["kde_health"])
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # DUPLICADOS (similitud ≥ 55%)                                            #
+    # ════════════════════════════════════════════════════════════════════════ #
+    duplicates = []
+    checked = set()
+    for i in range(n):
+        for j in range(i+1, n):
+            if (i,j) in checked: continue
+            checked.add((i,j))
+            ws_i = analyses[i]["words_set"]
+            ws_j = analyses[j]["words_set"]
+            if not ws_i or not ws_j: continue
+            union = len(ws_i | ws_j)
+            if union == 0: continue
+            overlap = len(ws_i & ws_j) / union
+            if overlap >= 0.55:
+                keep_idx = i if analyses[i]["kde_health"] >= analyses[j]["kde_health"] else j
+                drop_idx = j if keep_idx == i else i
+                duplicates.append({
+                    "title_i": analyses[i]["title"],
+                    "title_j": analyses[j]["title"],
+                    "overlap": round(overlap * 100),
+                    "keep": analyses[keep_idx]["title"],
+                    "drop": analyses[drop_idx]["title"],
+                })
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # CONFLICTOS (mismo tema, instrucciones incompatibles)                    #
+    # ════════════════════════════════════════════════════════════════════════ #
+    conflicts = []
+    for topic, kws in topic_keywords.items():
+        grp = [a for a in analyses if any(kw in a["text_lower"] for kw in kws)]
+        if len(grp) < 2: continue
+        for ii in range(len(grp)):
+            for jj in range(ii+1, len(grp)):
+                ai, aj = grp[ii], grp[jj]
+                if ai["anti_escalation_rule"] != aj["anti_escalation_rule"] and (ai["has_escalation"] or aj["has_escalation"]):
+                    conflicts.append({
+                        "topic": topic,
+                        "desc": (f"'{ai['title']}' {'prohíbe escalar' if ai['anti_escalation_rule'] else 'incluye escalamiento'}, "
+                                 f"mientras '{aj['title']}' {'prohíbe escalar' if aj['anti_escalation_rule'] else 'incluye escalamiento'}. "
+                                 "FIN recibirá instrucciones contradictorias sobre cuándo transferir al agente humano.")
+                    })
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # OPORTUNIDADES                                                            #
+    # ════════════════════════════════════════════════════════════════════════ #
+    opportunities = []
+    for topic, (cov_lbl, _) in coverage_map.items():
+        if cov_lbl == "Sin cobertura":
+            opportunities.append(f"No existe artículo para: {topic}. FIN no podrá resolver consultas de este tipo.")
+        elif cov_lbl == "Baja":
+            opportunities.append(f"Hay muy poca documentación sobre: {topic}. FIN tendrá baja capacidad de resolución.")
+    short_arts = [a for a in analyses if a["word_count"] < 60 and a["kde_health"] < 70]
+    if short_arts:
+        opportunities.append(
+            f"{len(short_arts)} artículo(s) con contenido insuficiente (< 60 palabras): "
+            f"{', '.join(repr(a['title']) for a in short_arts[:3])}. Ampliar para mejorar resolución de FIN."
+        )
+    if no_esc_list:
+        opportunities.append(
+            f"{len(no_esc_list)} artículo(s) sin criterio de escalamiento. "
+            "FIN no tendrá instrucción de salida al agotar los pasos."
+        )
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # PRIORIZACIÓN                                                             #
+    # ════════════════════════════════════════════════════════════════════════ #
+    priority_list = []
+    for a in analyses:
+        if a["has_kde_blocker"]:
+            priority_list.append((0, f"CORREGIR '{a['title']}' — BLOQUEADO por: {', '.join(a['kde_blockers'])}."))
+    for a in analyses:
+        if a["loop_risk_level"] in ("ALTO","CRÍTICO") and not a["has_kde_blocker"]:
+            priority_list.append((1, f"ELIMINAR LOOPS en '{a['title']}' — {a['loop_count']} patrón(es) detectado(s)."))
+    for a in no_esc_list:
+        priority_list.append((2, f"AGREGAR ESCALAMIENTO en '{a['title']}' — FIN no tiene instrucción de salida."))
+    for topic, (cov_lbl, _) in coverage_map.items():
+        if cov_lbl == "Sin cobertura":
+            priority_list.append((3, f"CREAR ARTÍCULO para: {topic}."))
+    blocked_titles = {a["title"] for a in analyses if a["has_kde_blocker"]}
+    for a in sorted(analyses, key=lambda x: x["kde_health"]):
+        if a["kde_health"] < 60 and a["title"] not in blocked_titles:
+            priority_list.append((4, f"OPTIMIZAR '{a['title']}' — score {a['kde_health']}/100."))
+
+    priority_list.sort(key=lambda x: x[0])
+    unique_prios = []
+    seen_prios = set()
+    for _, desc in priority_list:
+        k = desc[:80]
+        if k not in seen_prios:
+            seen_prios.add(k)
+            unique_prios.append(desc)
+    unique_prios = unique_prios[:10]
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # IMPACTO ESTIMADO                                                         #
+    # ════════════════════════════════════════════════════════════════════════ #
+    current_auto_res   = round(avg_health * 0.7)
+    potential_auto_res = min(95, current_auto_res + len(unique_prios) * 4)
+    esc_reduction      = min(60, blocked_count*15 + len(loop_articles)*10 + len(no_esc_list)*8)
+    no_cov_count       = sum(1 for _, (lbl,_) in coverage_map.items() if lbl == "Sin cobertura")
+    coverage_increase  = min(40, no_cov_count * 8)
+    maintain_increase  = min(40, len(short_arts)*5 + len(duplicates)*8)
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # PLAN DE ACCIÓN                                                           #
+    # ════════════════════════════════════════════════════════════════════════ #
+    quick_wins = []
+    medium_term = []
+    long_term = []
+
+    if anti_esc_articles:
+        quick_wins.append(
+            f"Eliminar la regla anti-escalamiento de {len(anti_esc_articles)} artículo(s): "
+            f"{', '.join(repr(a['title']) for a in anti_esc_articles[:2])}.")
+    if loop_articles:
+        quick_wins.append(
+            f"Eliminar patrones de bucle en {len(loop_articles)} artículo(s): "
+            f"{', '.join(repr(a['title']) for a in loop_articles[:2])}.")
+    if no_esc_list:
+        quick_wins.append(
+            f"Agregar criterio de escalamiento en {len(no_esc_list)} artículo(s) sin instrucción de salida.")
+    if duplicates:
+        quick_wins.append(
+            f"Consolidar {len(duplicates)} par(es) de artículos duplicados para reducir confusión en FIN.")
+
+    if abs_articles:
+        medium_term.append(
+            f"Reemplazar términos absolutos en {len(abs_articles)} artículo(s): "
+            f"{', '.join(repr(a['title']) for a in abs_articles[:2])}.")
+    no_cov_topics = [t for t,(lbl,_) in coverage_map.items() if lbl == "Sin cobertura"]
+    if no_cov_topics:
+        medium_term.append(
+            f"Crear artículos para {len(no_cov_topics)} tema(s) sin cobertura: {', '.join(no_cov_topics[:4])}.")
+    low_health_arts = [a for a in analyses if 50 <= a["kde_health"] < 70]
+    if low_health_arts:
+        medium_term.append(
+            f"Optimizar {len(low_health_arts)} artículo(s) con score entre 50 y 70 "
+            "para alcanzar el umbral de despliegue autónomo (≥ 78).")
+
+    long_term.append("Establecer revisión periódica de la Base de Conocimiento (cada 30–60 días).")
+    long_term.append("Usar audit_knowledge como paso de aprobación antes de publicar nuevos artículos para FIN.")
+    if conflicts:
+        long_term.append(f"Resolver {len(conflicts)} conflicto(s) de instrucciones entre artículos del mismo tema.")
+
+    # ════════════════════════════════════════════════════════════════════════ #
+    # CONSTRUCCIÓN DEL REPORTE                                                 #
+    # ════════════════════════════════════════════════════════════════════════ #
+    sep  = "=" * 48
+    div2 = "─" * 40
+
+    parts = []
+    parts += [sep, "KNOWLEDGE REVIEW — FIN Knowledge Core", sep, ""]
+    parts.append(f"PRODUCTO: {product.upper()}")
+    if context:
+        parts.append(f"CONTEXTO: {context}")
+    parts.append(f"ARTÍCULOS ANALIZADOS: {n}")
+    parts.append("")
+
+    # Madurez general
+    parts += [div2, "MADUREZ GENERAL", div2, ""]
+    parts.append(f"  {maturity_emoji} Score promedio: {avg_health}/100 — {maturity}")
+    parts.append(
+        f"  LISTO: {ready_count}  |  "
+        f"LISTO CON RECOMENDACIONES: {ready_recs_count}  |  "
+        f"NO LISTO: {not_ready_count}  |  "
+        f"BLOQUEADO: {blocked_count}"
+    )
+    parts.append("")
+
+    # Resumen ejecutivo
+    parts += [div2, "RESUMEN EJECUTIVO", div2, ""]
+    if conclusion == "READY":
+        parts.append("  ¿Preparada para FIN? Sí. La Base de Conocimiento cumple los estándares mínimos.")
+    elif conclusion == "READY WITH RECOMMENDATIONS":
+        parts.append("  ¿Preparada para FIN? Parcialmente. Requiere optimizaciones antes del despliegue completo.")
+    elif conclusion == "NOT READY":
+        parts.append("  ¿Preparada para FIN? No. Score insuficiente y artículos con problemas críticos sin resolver.")
+    else:
+        parts.append("  ¿Preparada para FIN? No. Bloqueadores críticos impiden cualquier despliegue.")
+
+    if anti_esc_articles:
+        parts.append(f"  Mayor riesgo: {len(anti_esc_articles)} artículo(s) con regla anti-escalamiento. FIN quedará sin salida al agotar los pasos.")
+    elif loop_articles:
+        parts.append(f"  Mayor riesgo: {len(loop_articles)} artículo(s) con loop instruccional. FIN puede repetir instrucciones indefinidamente.")
+    elif no_esc_list:
+        parts.append(f"  Mayor riesgo: {len(no_esc_list)} artículo(s) sin criterio de escalamiento. FIN no sabe cuándo transferir al agente humano.")
+    else:
+        parts.append(f"  Mayor riesgo: calidad general ({avg_health}/100). Aplicar recomendaciones para alcanzar el umbral de despliegue.")
+
+    no_cov_list = [t for t,(lbl,_) in coverage_map.items() if lbl == "Sin cobertura"]
+    low_cov_list = [t for t,(lbl,_) in coverage_map.items() if lbl == "Baja"]
+    if no_cov_list:
+        parts.append(f"  Mayor vacío: sin cobertura en {', '.join(no_cov_list[:4])}. FIN no podrá resolver consultas de estos temas.")
+    elif low_cov_list:
+        parts.append(f"  Mayor vacío: cobertura baja en {', '.join(low_cov_list[:3])}. FIN tendrá baja capacidad en esos temas.")
+    else:
+        parts.append("  Mayor vacío: calidad de artículos existentes. Mejorar los scores individuales para mayor resolución autónoma.")
+
+    parts.append(
+        f"  Impacto de mejorar: resolución autónoma podría subir de ~{current_auto_res}% a ~{potential_auto_res}% "
+        f"aplicando las {len(unique_prios)} prioridades identificadas."
+    )
+    parts.append("")
+
+    # Cobertura
+    parts += [div2, "COBERTURA", div2, ""]
+    cov_emoji = {"Alta": "🟢", "Media": "🔵", "Baja": "🔶", "Sin cobertura": "⬜"}
+    cov_order = ["Alta", "Media", "Baja", "Sin cobertura"]
+    for topic, (cov_lbl, titles) in sorted(coverage_map.items(), key=lambda x: cov_order.index(x[1][0])):
+        parts.append(f"  {cov_emoji[cov_lbl]} {topic:<20} {cov_lbl}")
+        if titles:
+            parts.append(f"     └─ {', '.join(repr(t) for t in titles[:2])}")
+    parts.append("")
+
+    # Artículos críticos
+    parts += [div2, "ARTÍCULOS CRÍTICOS", div2, ""]
+    if critical_articles:
+        for a in critical_articles[:8]:
+            parts.append(f"  🔴 '{a['title']}' — score {a['kde_health']}/100")
+            if a["problems"]:
+                parts.append(f"     Motivo: {' | '.join(a['problems'][:4])}")
+    else:
+        parts.append("  ✅ No se detectaron artículos en estado crítico.")
+    parts.append("")
+
+    # Duplicados
+    parts += [div2, "DUPLICADOS", div2, ""]
+    if duplicates:
+        for d in duplicates[:5]:
+            parts.append(f"  ⚠️  Similitud {d['overlap']}%: '{d['title_i']}' ↔ '{d['title_j']}'")
+            parts.append(f"     → Conservar: '{d['keep']}' | Revisar/eliminar: '{d['drop']}'")
+    else:
+        parts.append("  ✅ No se detectaron artículos con contenido duplicado.")
+    parts.append("")
+
+    # Conflictos
+    parts += [div2, "CONFLICTOS", div2, ""]
+    if conflicts:
+        for c in conflicts[:5]:
+            parts.append(f"  🔴 Tema: {c['topic']}")
+            parts.append(f"     {c['desc']}")
+    else:
+        parts.append("  ✅ No se detectaron instrucciones incompatibles entre artículos.")
+    parts.append("")
+
+    # Oportunidades
+    parts += [div2, "OPORTUNIDADES", div2, ""]
+    if opportunities:
+        for opp in opportunities[:8]:
+            parts.append(f"  💡 {opp}")
+    else:
+        parts.append("  ✅ La Base de Conocimiento tiene cobertura suficiente en los temas analizados.")
+    parts.append("")
+
+    # Priorización
+    parts += [div2, "PRIORIZACIÓN", div2, ""]
+    if unique_prios:
+        for idx, p in enumerate(unique_prios, 1):
+            parts.append(f"  {idx}. {p}")
+    else:
+        parts.append("  ✅ No se identificaron acciones de alta prioridad.")
+    parts.append("")
+
+    # Impacto estimado
+    parts += [div2, "IMPACTO ESTIMADO", div2, ""]
+    parts.append(f"  Mejora en resolución autónoma .... +{potential_auto_res - current_auto_res}% (de ~{current_auto_res}% a ~{potential_auto_res}%)")
+    parts.append(f"  Reducción de escalamientos ....... ~{esc_reduction}% menos transferencias innecesarias")
+    parts.append(f"  Incremento de cobertura .......... +{coverage_increase} puntos porcentuales estimados")
+    parts.append(f"  Incremento de mantenibilidad ..... +{maintain_increase} puntos porcentuales estimados")
+    parts.append("")
+
+    # Plan de acción
+    parts += [div2, "PLAN DE ACCIÓN", div2, ""]
+    parts.append("  Quick Wins (inmediato)")
+    if quick_wins:
+        for qw in quick_wins[:4]:
+            parts.append(f"    → {qw}")
+    else:
+        parts.append("    → No se identificaron quick wins. La base está en buen estado general.")
+    parts.append("")
+    parts.append("  Mediano plazo (1–4 semanas)")
+    if medium_term:
+        for mt in medium_term[:4]:
+            parts.append(f"    → {mt}")
+    else:
+        parts.append("    → Sin acciones de mediano plazo identificadas.")
+    parts.append("")
+    parts.append("  Largo plazo (proceso continuo)")
+    for lt in long_term[:3]:
+        parts.append(f"    → {lt}")
+    parts.append("")
+
+    # Conclusión
+    parts += [div2, "CONCLUSIÓN", div2, ""]
+    parts.append(f"  {concl_emoji} {conclusion}")
+    parts.append(f"  {concl_why}")
+    parts.append("")
+    parts.append(sep)
+
+    return "\n".join(parts)
+
+
+@mcp.tool()
 async def score_guideline(
     guideline: str,
     product: str = "general",
