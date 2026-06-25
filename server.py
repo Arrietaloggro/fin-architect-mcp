@@ -2647,11 +2647,11 @@ async def architect_review(
     objective: str = ""
 ) -> str:
     """
-    Orquestador del FIN Architect MCP v3. Motor de decisiones arquitectónicas.
-    Ejecuta el pipeline completo: extract_guidelines → generate_guideline →
-    audit_guideline → optimize_guideline → classify_guideline → detect_conflicts →
-    score_guideline → simulate_fin y activa el ARCHITECT DECISION ENGINE para
-    clasificar guidelines, tomar la decisión de despliegue y construir el roadmap.
+    Orquestador del FIN Architect MCP v4. Reporte ejecutivo de arquitectura
+    conversacional nivel empresarial. Pipeline completo + ARCHITECT DECISION ENGINE
+    con cobertura funcional, métricas de repositorio, índice de mantenibilidad,
+    confidence del análisis, guidelines huérfanas, matriz de cobertura, simulación
+    de impacto y resúmenes ejecutivos diferenciados para PM y equipo de Soporte.
     """
 
     # ------------------------------------------------------------------ #
