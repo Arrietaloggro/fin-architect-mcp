@@ -892,3 +892,701 @@ def extract_metrics_from_reports(
         "has_kr":             bool(knowledge_review_text.strip()),
         "has_ar":             bool(architect_review_text.strip()),
     }
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# MÓDULO GUIDELINE — Constantes y funciones centralizadas                      #
+# ════════════════════════════════════════════════════════════════════════════ #
+
+GUIDELINE_ABSOLUTE_WORDS = ["siempre", "nunca", "todos", "ninguno", "cualquier"]
+
+# Intention categories — used by simulate_fin, generate_guideline, extract_guidelines
+INTENTION_MAP = [
+    ("Facturación",      ["factura", "cobro", "pago", "cargo", "recibo", "monto"]),
+    ("Inventario",       ["inventario", "stock", "producto", "artículo", "bodega"]),
+    ("Caja",             ["caja", "cierre", "apertura", "efectivo", "denominación"]),
+    ("POS",              ["pos", "terminal", "punto de venta", "datáfono", "impresora"]),
+    ("Restobar",         ["mesa", "comanda", "pedido", "cocina", "restaurante", "bar"]),
+    ("DIAN",             ["dian", "cufe", "resolución", "factura electrónica", "habilitación"]),
+    ("Nómina",           ["nómina", "empleado", "salario", "liquidación", "prestaciones"]),
+    ("Reportes",         ["reporte", "informe", "estadística", "consulta", "historial"]),
+    ("Configuración",    ["configurar", "configuración", "ajuste", "parámetro", "módulo"]),
+    ("Error técnico",    ["error", "falla", "no funciona", "fallo", "reiniciar", "caído"]),
+    ("Acceso",           ["acceso", "contraseña", "usuario", "clave", "iniciar sesión", "bloqueado"]),
+    ("Seguridad",        ["seguridad", "permiso", "rol", "administrador", "auditoría"]),
+]
+
+# Emotion detection — used by simulate_fin, generate_guideline
+FRUSTRATION_KEYWORDS = [
+    "furioso", "harto", "pésimo", "terrible", "inaceptable", "no sirve",
+    "fraude", "robo", "incompetente", "nunca funciona", "siempre falla",
+]
+ANNOYANCE_KEYWORDS = ["molesto", "enojado", "fastidiado", "no entiendo", "no sirve"]
+URGENCY_KEYWORDS   = ["urgente", "emergencia", "ya mismo", "hoy mismo", "crítico", "no puedo esperar"]
+NEUTRAL_KEYWORDS   = ["consulta", "pregunta", "información", "cómo funciona"]
+
+# Guideline-level word lists (score_guideline, optimize_guideline, classify_guideline, etc.)
+GUIDELINE_ESCALATION_WORDS = [
+    "escalar", "escala", "transferir", "transfiere", "agente humano", "agente",
+]
+
+GUIDELINE_RESOLVE_WORDS = [
+    "resolver", "intenta resolver", "resuelve", "solucionar", "soluciona",
+    "base de conocimiento",
+]
+
+GUIDELINE_PROHIBITION_WORDS = [
+    "no escalar", "no transferir", "no escales", "nunca escalar", "no ofrecer",
+]
+
+GUIDELINE_OBLIGATION_WORDS = [
+    "siempre escalar", "debe escalar", "escalar siempre", "siempre transferir",
+]
+
+GUIDELINE_PRIORITY_WORDS = [
+    "urgente", "alta prioridad", "prioridad alta", "prioridad baja", "baja prioridad", "normal",
+]
+
+GUIDELINE_AMBIGUOUS_TERMS = [
+    "siempre", "nunca", "normalmente", "generalmente", "en la mayoría", "típicamente",
+    "usualmente", "casi siempre", "en general", "a menudo", "habitualmente",
+    "regularmente", "frecuentemente",
+]
+
+GUIDELINE_VAGUE_PHRASES = [
+    "de alguna manera", "como sea posible", "según corresponda",
+    "a discreción", "podría", "en algunos casos", "eventualmente",
+]
+
+GUIDELINE_ACTION_VERBS = [
+    "escala", "escalar", "responde", "responder", "transfiere", "transferir",
+    "ofrece", "ofrecer", "solicita", "solicitar", "confirma", "verifica",
+]
+
+GUIDELINE_SPECIFIC_SIGNALS = [
+    "factura", "cobro", "pago", "error", "acceso", "contraseña", "cuenta",
+    "bloqueo", "falla", "urgente", "cliente nuevo", "primera vez",
+    "reincidente", "escalado previamente",
+]
+
+GUIDELINE_RISKY_PATTERNS = [
+    "comparte la contraseña", "da acceso", "proporciona credenciales",
+    "acceso completo", "sin verificar identidad", "sin confirmar",
+    "da el descuento", "aplica el reembolso sin", "omite el proceso",
+    "salta la verificación",
+]
+
+GUIDELINE_EMPATHY_SIGNALS = [
+    "disculpa", "lamentamos", "entendemos", "comprendo", "entiendo",
+    "lo sentimos", "le pedimos disculpas",
+]
+
+GUIDELINE_CONTRADICTION_PAIRS = [
+    ("escalar", "no escalar"),
+    ("siempre", "solo si"),
+    ("nunca", "en algunos casos"),
+    ("ofrece descuento", "no ofrece descuento"),
+    ("disculpa", "no disculpa"),
+]
+
+GUIDELINE_SHARED_SCENARIOS = [
+    "factura", "cobro", "pago", "error", "acceso", "contraseña", "cuenta",
+]
+
+GUIDELINE_CONDITION_PAIRS = [
+    ("frustración", "molesto"),
+    ("primera vez", "reincidente"),
+    ("cliente nuevo", "cliente antiguo"),
+    ("horario laboral", "fuera de horario"),
+]
+
+# Event catalog — used by extract_guidelines
+GUIDELINE_EVENT_CATALOG = [
+    {"id": "user_tried_docs",          "label": "Usuario ya consultó documentación",       "signals": ["ya revisé", "ya lo hice", "no funciona", "seguí los pasos", "como dice"],                                    "impact": 55, "esc_risk": 60},
+    {"id": "fin_repeats_solution",     "label": "FIN repite misma solución",               "signals": ["me dijiste lo mismo", "ya me diste esa respuesta", "misma solución", "repetiste", "lo mismo de antes"],       "impact": 50, "esc_risk": 55},
+    {"id": "problem_persists",         "label": "Problema persiste después de pasos",      "signals": ["sigue el error", "persiste", "no se resolvió", "sigue igual", "todavía falla"],                               "impact": 50, "esc_risk": 50},
+    {"id": "user_urgency",             "label": "Urgencia del usuario",                    "signals": ["urgente", "necesito ahora", "hoy mismo", "ya mismo", "no puedo esperar", "es crítico", "emergencia"],        "impact": 45, "esc_risk": 40},
+    {"id": "user_frustration",         "label": "Frustración del usuario",                 "signals": ["molesto", "frustrado", "enojado", "inaceptable", "terrible", "pésimo"],                                       "impact": 45, "esc_risk": 45},
+    {"id": "fin_generic_response",     "label": "FIN dio respuesta genérica",              "signals": ["respuesta genérica", "no me ayudó", "respuesta automática", "me dijo lo mismo", "respuesta repetida"],        "impact": 40, "esc_risk": 35},
+    {"id": "fin_escalated",            "label": "FIN escaló el caso",                      "signals": ["te voy a transferir", "escalaré tu caso", "asesor", "agente humano", "supervisor"],                           "impact": 35, "esc_risk": 30},
+    {"id": "problem_resolved",         "label": "Problema resuelto",                       "signals": ["gracias", "funcionó", "ya quedó", "se resolvió", "perfecto", "listo", "resuelto"],                            "impact":  0, "esc_risk":  0},
+    {"id": "fin_requests_info",        "label": "FIN solicitó más información",             "signals": ["puedes darme más detalles", "necesito más información", "cuál es el error", "describe el problema"],          "impact": 15, "esc_risk": 10},
+    {"id": "user_multiple_attempts",   "label": "Usuario intentó múltiples veces",         "signals": ["ya lo intenté varias veces", "llevo días", "segunda vez", "tercera vez", "varias veces"],                     "impact": 45, "esc_risk": 50},
+    {"id": "user_blocked",             "label": "Usuario bloqueado completamente",         "signals": ["no puedo entrar", "bloqueado", "sin acceso", "no responde", "caído", "no carga", "sin servicio"],             "impact": 55, "esc_risk": 55},
+    {"id": "unnecessary_escalation_risk", "label": "Riesgo de escalamiento innecesario",  "signals": ["no sé cómo", "no tengo información", "no encuentro la respuesta", "no puedo ayudarte"],                       "impact": 50, "esc_risk": 65},
+]
+
+# Clustering thresholds — used by extract_guidelines
+GUIDELINE_CLUSTER_THRESHOLD = 0.70
+GUIDELINE_MERGE_THRESHOLD   = 0.80
+
+# Pattern names for event-set combinations — used by extract_guidelines
+GUIDELINE_PATTERN_NAMES = {
+    frozenset(["user_tried_docs", "problem_persists"]):                       "Documentación insuficiente o desactualizada",
+    frozenset(["fin_repeats_solution", "problem_persists"]):                  "Loop instruccional — FIN repite sin avanzar",
+    frozenset(["user_frustration", "fin_escalated"]):                         "Escalamiento reactivo a frustración",
+    frozenset(["user_tried_docs", "fin_generic_response"]):                   "Respuesta genérica ante documentación consultada",
+    frozenset(["user_urgency", "fin_requests_info"]):                         "Demora en atender urgencia",
+    frozenset(["user_blocked", "fin_escalated"]):                             "Bloqueo total resuelto por escalamiento",
+    frozenset(["user_blocked", "problem_persists"]):                          "Bloqueo sin resolución",
+    frozenset(["unnecessary_escalation_risk", "fin_escalated"]):              "Escalamiento innecesario por falta de guía",
+    frozenset(["user_multiple_attempts", "problem_persists"]):                "Reincidencia sin resolución",
+    frozenset(["user_frustration", "unnecessary_escalation_risk"]):           "Frustración por falta de respuesta efectiva",
+    frozenset(["user_tried_docs", "fin_repeats_solution"]):                   "Loop: usuario siguió guía pero FIN repite misma solución",
+    frozenset(["user_urgency", "user_blocked"]):                              "Urgencia crítica con bloqueo total",
+    frozenset(["user_frustration", "problem_persists", "fin_generic_response"]): "Frustración acumulada: problema persistente con respuesta genérica",
+    frozenset(["fin_requests_info", "fin_repeats_solution"]):                 "FIN solicita información ya provista",
+    frozenset(["user_multiple_attempts", "fin_escalated"]):                   "Escalamiento tras múltiples intentos fallidos",
+}
+
+# Guideline templates — used by extract_guidelines
+GUIDELINE_TEMPLATES = {
+    "user_tried_docs": (
+        "Cuando el usuario indique que ya siguió los pasos de la documentación y el problema persiste, "
+        "FIN debe solicitar el error exacto y el paso donde se bloqueó antes de escalar."
+    ),
+    "fin_repeats_solution": (
+        "Si FIN ya ofreció una solución y el problema persiste, debe reconocer el intento previo, "
+        "explorar una causa alternativa y no repetir el mismo procedimiento."
+    ),
+    "user_urgency": (
+        "Cuando el usuario exprese urgencia o emergencia, FIN debe priorizar la resolución inmediata "
+        "o escalar de forma expedita indicando el tiempo estimado de respuesta."
+    ),
+    "user_frustration": (
+        "Cuando el usuario exprese frustración o molestia, FIN debe reconocerla empáticamente antes "
+        "de continuar con pasos técnicos."
+    ),
+    "user_blocked": (
+        "Si el usuario está completamente bloqueado (sin acceso, sistema caído), FIN debe escalar "
+        "de inmediato con la descripción del bloqueo y el impacto operativo."
+    ),
+    "unnecessary_escalation_risk": (
+        "FIN no debe escalar cuando no tiene suficiente información para diagnosticar. "
+        "Debe solicitar datos específicos antes de transferir el caso."
+    ),
+    "default": (
+        "Cuando se detecte este patrón de conversación, FIN debe seguir el protocolo documentado "
+        "para este escenario, priorizando la resolución autónoma antes de escalar."
+    ),
+}
+
+# Problem signals — used by generate_guideline
+GUIDELINE_PROBLEM_SIGNALS = {
+    "escalamiento sin criterios": [
+        "me pasaron con", "me transfirieron", "agente no supo",
+        "escalaron sin", "nadie me ayudó",
+    ],
+    "falta de resolución documentada": [
+        "no encuentro", "no hay artículo", "no existe documentación",
+        "no hay guía", "no encontré nada",
+    ],
+    "solución documentada insuficiente": [
+        "ya seguí los pasos", "seguí las instrucciones", "hice lo que dice",
+        "apliqué la guía", "seguí el manual", "hice el procedimiento",
+    ],
+    "respuesta genérica de FIN": [
+        "me dijo lo mismo", "misma respuesta", "respuesta repetida",
+        "no me ayuda", "respuesta automática",
+    ],
+    "fallo técnico sin guía": [
+        "error al", "no carga", "pantalla en blanco",
+        "se traba", "no responde", "caído",
+    ],
+    "urgencia no atendida": [
+        "hoy mismo", "urgente", "necesito ahora",
+        "no puedo esperar", "es crítico",
+    ],
+}
+
+# Guideline failure and behavior maps — used by generate_guideline
+GUIDELINE_FAILURE_MAP = {
+    "escalamiento sin criterios":        "FIN escala sin agotar opciones de resolución autónoma.",
+    "falta de resolución documentada":   "No existe documentación que FIN pueda usar para resolver este caso.",
+    "solución documentada insuficiente": "La documentación existe pero es insuficiente para guiar a FIN paso a paso.",
+    "respuesta genérica de FIN":         "FIN responde con información general sin resolver el problema específico.",
+    "fallo técnico sin guía":            "FIN no tiene una guía de diagnóstico técnico para este tipo de fallo.",
+    "urgencia no atendida":              "FIN no tiene protocolo de prioridad para casos urgentes.",
+}
+
+GUIDELINE_BEHAVIOR_MAP = {
+    "escalamiento sin criterios": (
+        "FIN debe agotar al menos 2 alternativas de resolución autónoma antes de escalar. "
+        "Al escalar, debe incluir: error exacto, pasos realizados y resultado de cada uno."
+    ),
+    "falta de resolución documentada": (
+        "Crear documentación específica para este caso. FIN debe solicitar más detalles al usuario "
+        "y escalar con información completa mientras la documentación no esté disponible."
+    ),
+    "solución documentada insuficiente": (
+        "Enriquecer la documentación con pasos más detallados, causas alternativas y criterio de escalamiento. "
+        "FIN debe reconocer cuando el usuario ya siguió los pasos y explorar causa alternativa."
+    ),
+    "respuesta genérica de FIN": (
+        "FIN debe identificar el problema específico antes de responder. "
+        "Si no puede diagnosticar con la información disponible, solicitar detalles adicionales."
+    ),
+    "fallo técnico sin guía": (
+        "Crear protocolo de diagnóstico técnico para este tipo de fallo: "
+        "síntomas, pasos de diagnóstico, solución y criterio de escalamiento."
+    ),
+    "urgencia no atendida": (
+        "FIN debe reconocer la urgencia en la primera respuesta, "
+        "priorizar resolución inmediata o escalar de forma expedita con tiempo estimado de respuesta."
+    ),
+}
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# FUNCIONES DE DETECCIÓN — Módulo Guideline                                    #
+# ════════════════════════════════════════════════════════════════════════════ #
+
+def detect_intention(text_lower: str) -> str:
+    """Detecta la intención/categoría dominante de un texto. Devuelve nombre de categoría o 'General'."""
+    for category, keywords in INTENTION_MAP:
+        if any(kw in text_lower for kw in keywords):
+            return category
+    return "General"
+
+
+def detect_emotion(text_lower: str) -> str:
+    """Detecta el estado emocional del usuario. Devuelve: Frustrado / Molesto / Urgente / Neutral."""
+    if any(k in text_lower for k in FRUSTRATION_KEYWORDS):
+        return "Frustrado"
+    if any(k in text_lower for k in ANNOYANCE_KEYWORDS):
+        return "Molesto"
+    if any(k in text_lower for k in URGENCY_KEYWORDS):
+        return "Urgente"
+    return "Neutral"
+
+
+def detect_guideline_events(text_lower: str) -> list:
+    """
+    Detecta eventos de conversación relevantes para extract_guidelines.
+    Devuelve lista de event ids presentes.
+    """
+    return [
+        ev["id"]
+        for ev in GUIDELINE_EVENT_CATALOG
+        if any(sig in text_lower for sig in ev["signals"])
+    ]
+
+
+def detect_guideline_problems(text_lower: str) -> list:
+    """
+    Detecta tipos de problema en conversaciones para generate_guideline.
+    Devuelve lista de problem keys de GUIDELINE_PROBLEM_SIGNALS.
+    """
+    return [
+        ptype
+        for ptype, signals in GUIDELINE_PROBLEM_SIGNALS.items()
+        if any(sig in text_lower for sig in signals)
+    ]
+
+
+def guideline_risk_level(risk_score: int) -> str:
+    """Mapea un risk_score numérico al nivel ALTO/MEDIO/BAJO (usado por optimize_guideline, classify_guideline)."""
+    if risk_score >= 7:
+        return "ALTO"
+    if risk_score >= 4:
+        return "MEDIO"
+    return "BAJO"
+
+
+def conflict_severity_level(severity: int) -> str:
+    """Mapea severidad de conflicto a ALTA/MEDIA/BAJA (usado por detect_conflicts)."""
+    if severity >= 10:
+        return "ALTA"
+    if severity >= 4:
+        return "MEDIA"
+    return "BAJA"
+
+
+def guideline_priority_from_risk(nivel_riesgo: str, categoria: str) -> str:
+    """
+    Determina prioridad de implementación a partir de risk level y categoría.
+    Devuelve: CRÍTICA / ALTA / MEDIA / BAJA.
+    """
+    if nivel_riesgo == "ALTO":
+        return "CRÍTICA"
+    if nivel_riesgo == "MEDIO":
+        return "ALTA"
+    if categoria in ("DIAN", "Seguridad", "Facturación", "Nómina"):
+        return "ALTA"
+    return "MEDIA"
+
+
+def guideline_impact_priority(total_impact_score: int) -> tuple:
+    """
+    Dado un total_impact_score, devuelve (impact_label, implementation_priority).
+    Usado por generate_guideline y extract_guidelines.
+    """
+    if total_impact_score >= 80:
+        impact_label = "Alto"
+    elif total_impact_score >= 50:
+        impact_label = "Medio"
+    else:
+        impact_label = "Bajo"
+
+    if total_impact_score >= 80:
+        impl_priority = "INMEDIATA"
+    elif total_impact_score >= 50:
+        impl_priority = "ALTA"
+    elif total_impact_score >= 30:
+        impl_priority = "MEDIA"
+    else:
+        impl_priority = "BAJA"
+
+    return impact_label, impl_priority
+
+
+def cluster_pattern_name(event_set: frozenset) -> str:
+    """Busca el nombre del patrón para un conjunto de eventos. Devuelve nombre o descripción genérica."""
+    if event_set in GUIDELINE_PATTERN_NAMES:
+        return GUIDELINE_PATTERN_NAMES[event_set]
+    for k, v in GUIDELINE_PATTERN_NAMES.items():
+        if k.issubset(event_set):
+            return v
+    labels = [ev["label"] for ev in GUIDELINE_EVENT_CATALOG if ev["id"] in event_set]
+    return " + ".join(labels[:2]) if labels else "Patrón no clasificado"
+
+
+def guideline_template_for(event_set: frozenset) -> str:
+    """Selecciona la plantilla de guideline más apropiada para un conjunto de eventos."""
+    priority_order = [
+        "user_blocked", "user_urgency", "user_frustration",
+        "fin_repeats_solution", "user_tried_docs",
+        "unnecessary_escalation_risk",
+    ]
+    for key in priority_order:
+        if key in event_set:
+            return GUIDELINE_TEMPLATES.get(key, GUIDELINE_TEMPLATES["default"])
+    return GUIDELINE_TEMPLATES["default"]
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# MÓDULO GUIDELINE — Constantes centralizadas                                  #
+# ════════════════════════════════════════════════════════════════════════════ #
+
+GUIDELINE_ABSOLUTE_WORDS = ["siempre", "nunca", "todos", "ninguno", "cualquier"]
+
+INTENTION_MAP = [
+    ("Facturación",   ["factura", "cobro", "pago", "cargo", "recibo", "monto"]),
+    ("Inventario",    ["inventario", "stock", "producto", "artículo", "bodega"]),
+    ("Caja",          ["caja", "cierre", "apertura", "efectivo", "denominación"]),
+    ("POS",           ["pos", "terminal", "punto de venta", "datáfono", "impresora"]),
+    ("Restobar",      ["mesa", "comanda", "pedido", "cocina", "restaurante", "bar"]),
+    ("DIAN",          ["dian", "cufe", "resolución", "factura electrónica", "habilitación"]),
+    ("Nómina",        ["nómina", "empleado", "salario", "liquidación", "prestaciones"]),
+    ("Reportes",      ["reporte", "informe", "estadística", "consulta", "historial"]),
+    ("Configuración", ["configurar", "configuración", "ajuste", "parámetro", "módulo"]),
+    ("Error técnico", ["error", "falla", "no funciona", "fallo", "reiniciar", "caído"]),
+    ("Acceso",        ["acceso", "contraseña", "usuario", "clave", "iniciar sesión", "bloqueado"]),
+    ("Seguridad",     ["seguridad", "permiso", "rol", "administrador", "auditoría"]),
+]
+
+FRUSTRATION_KEYWORDS = [
+    "furioso", "harto", "pésimo", "terrible", "inaceptable", "no sirve",
+    "fraude", "robo", "incompetente", "nunca funciona", "siempre falla",
+]
+ANNOYANCE_KEYWORDS = ["molesto", "enojado", "fastidiado", "no entiendo", "no sirve"]
+URGENCY_KEYWORDS   = ["urgente", "emergencia", "ya mismo", "hoy mismo", "crítico", "no puedo esperar"]
+
+GUIDELINE_ESCALATION_WORDS = [
+    "escalar", "escala", "transferir", "transfiere", "agente humano", "agente",
+]
+GUIDELINE_RESOLVE_WORDS = [
+    "resolver", "intenta resolver", "resuelve", "solucionar", "soluciona",
+    "base de conocimiento",
+]
+GUIDELINE_PROHIBITION_WORDS = [
+    "no escalar", "no transferir", "no escales", "nunca escalar", "no ofrecer",
+]
+GUIDELINE_OBLIGATION_WORDS = [
+    "siempre escalar", "debe escalar", "escalar siempre", "siempre transferir",
+]
+GUIDELINE_PRIORITY_WORDS = [
+    "urgente", "alta prioridad", "prioridad alta",
+    "prioridad baja", "baja prioridad", "normal",
+]
+GUIDELINE_AMBIGUOUS_TERMS = [
+    "siempre", "nunca", "normalmente", "generalmente", "en la mayoría",
+    "típicamente", "usualmente", "casi siempre", "en general",
+    "a menudo", "habitualmente", "regularmente", "frecuentemente",
+]
+GUIDELINE_VAGUE_PHRASES = [
+    "de alguna manera", "como sea posible", "según corresponda",
+    "a discreción", "podría", "en algunos casos", "eventualmente",
+]
+GUIDELINE_ACTION_VERBS = [
+    "escala", "escalar", "responde", "responder", "transfiere", "transferir",
+    "ofrece", "ofrecer", "solicita", "solicitar", "confirma", "verifica",
+]
+GUIDELINE_SPECIFIC_SIGNALS = [
+    "factura", "cobro", "pago", "error", "acceso", "contraseña", "cuenta",
+    "bloqueo", "falla", "urgente", "cliente nuevo", "primera vez",
+    "reincidente", "escalado previamente",
+]
+GUIDELINE_RISKY_PATTERNS = [
+    "comparte la contraseña", "da acceso", "proporciona credenciales",
+    "acceso completo", "sin verificar identidad", "sin confirmar",
+    "da el descuento", "aplica el reembolso sin", "omite el proceso",
+    "salta la verificación",
+]
+GUIDELINE_EMPATHY_SIGNALS = [
+    "disculpa", "lamentamos", "entendemos", "comprendo", "entiendo",
+    "lo sentimos", "le pedimos disculpas",
+]
+GUIDELINE_CONTRADICTION_PAIRS = [
+    ("escalar",          "no escalar"),
+    ("siempre",          "solo si"),
+    ("nunca",            "en algunos casos"),
+    ("ofrece descuento", "no ofrece descuento"),
+    ("disculpa",         "no disculpa"),
+]
+GUIDELINE_SHARED_SCENARIOS = [
+    "factura", "cobro", "pago", "error", "acceso", "contraseña", "cuenta",
+]
+GUIDELINE_CONDITION_PAIRS = [
+    ("frustración",    "molesto"),
+    ("primera vez",    "reincidente"),
+    ("cliente nuevo",  "cliente antiguo"),
+    ("horario laboral","fuera de horario"),
+]
+
+GUIDELINE_EVENT_CATALOG = [
+    {"id": "user_tried_docs",             "label": "Usuario ya consultó documentación",    "signals": ["ya revisé", "ya lo hice", "no funciona", "seguí los pasos", "como dice"],                                   "impact": 55, "esc_risk": 60},
+    {"id": "fin_repeats_solution",        "label": "FIN repite misma solución",            "signals": ["me dijiste lo mismo", "ya me diste esa respuesta", "misma solución", "repetiste", "lo mismo de antes"],      "impact": 50, "esc_risk": 55},
+    {"id": "problem_persists",            "label": "Problema persiste después de pasos",   "signals": ["sigue el error", "persiste", "no se resolvió", "sigue igual", "todavía falla"],                              "impact": 50, "esc_risk": 50},
+    {"id": "user_urgency",                "label": "Urgencia del usuario",                 "signals": ["urgente", "necesito ahora", "hoy mismo", "ya mismo", "no puedo esperar", "es crítico", "emergencia"],       "impact": 45, "esc_risk": 40},
+    {"id": "user_frustration",            "label": "Frustración del usuario",              "signals": ["molesto", "frustrado", "enojado", "inaceptable", "terrible", "pésimo"],                                      "impact": 45, "esc_risk": 45},
+    {"id": "fin_generic_response",        "label": "FIN dio respuesta genérica",           "signals": ["respuesta genérica", "no me ayudó", "respuesta automática", "me dijo lo mismo", "respuesta repetida"],       "impact": 40, "esc_risk": 35},
+    {"id": "fin_escalated",               "label": "FIN escaló el caso",                  "signals": ["te voy a transferir", "escalaré tu caso", "asesor", "agente humano", "supervisor"],                          "impact": 35, "esc_risk": 30},
+    {"id": "problem_resolved",            "label": "Problema resuelto",                   "signals": ["gracias", "funcionó", "ya quedó", "se resolvió", "perfecto", "listo", "resuelto"],                           "impact":  0, "esc_risk":  0},
+    {"id": "fin_requests_info",           "label": "FIN solicitó más información",         "signals": ["puedes darme más detalles", "necesito más información", "cuál es el error", "describe el problema"],         "impact": 15, "esc_risk": 10},
+    {"id": "user_multiple_attempts",      "label": "Usuario intentó múltiples veces",      "signals": ["ya lo intenté varias veces", "llevo días", "segunda vez", "tercera vez", "varias veces"],                    "impact": 45, "esc_risk": 50},
+    {"id": "user_blocked",                "label": "Usuario bloqueado completamente",      "signals": ["no puedo entrar", "bloqueado", "sin acceso", "no responde", "caído", "no carga", "sin servicio"],            "impact": 55, "esc_risk": 55},
+    {"id": "unnecessary_escalation_risk", "label": "Riesgo de escalamiento innecesario",  "signals": ["no sé cómo", "no tengo información", "no encuentro la respuesta", "no puedo ayudarte"],                      "impact": 50, "esc_risk": 65},
+]
+
+GUIDELINE_CLUSTER_THRESHOLD = 0.70
+GUIDELINE_MERGE_THRESHOLD   = 0.80
+
+GUIDELINE_PATTERN_NAMES = {
+    frozenset(["user_tried_docs", "problem_persists"]):                          "Documentación insuficiente o desactualizada",
+    frozenset(["fin_repeats_solution", "problem_persists"]):                     "Loop instruccional — FIN repite sin avanzar",
+    frozenset(["user_frustration", "fin_escalated"]):                            "Escalamiento reactivo a frustración",
+    frozenset(["user_tried_docs", "fin_generic_response"]):                      "Respuesta genérica ante documentación consultada",
+    frozenset(["user_urgency", "fin_requests_info"]):                            "Demora en atender urgencia",
+    frozenset(["user_blocked", "fin_escalated"]):                                "Bloqueo total resuelto por escalamiento",
+    frozenset(["user_blocked", "problem_persists"]):                             "Bloqueo sin resolución",
+    frozenset(["unnecessary_escalation_risk", "fin_escalated"]):                 "Escalamiento innecesario por falta de guía",
+    frozenset(["user_multiple_attempts", "problem_persists"]):                   "Reincidencia sin resolución",
+    frozenset(["user_frustration", "unnecessary_escalation_risk"]):              "Frustración por falta de respuesta efectiva",
+    frozenset(["user_tried_docs", "fin_repeats_solution"]):                      "Loop: usuario siguió guía pero FIN repite misma solución",
+    frozenset(["user_urgency", "user_blocked"]):                                 "Urgencia crítica con bloqueo total",
+    frozenset(["user_frustration", "problem_persists", "fin_generic_response"]): "Frustración acumulada: problema persistente con respuesta genérica",
+    frozenset(["fin_requests_info", "fin_repeats_solution"]):                    "FIN solicita información ya provista",
+    frozenset(["user_multiple_attempts", "fin_escalated"]):                      "Escalamiento tras múltiples intentos fallidos",
+}
+
+GUIDELINE_TEMPLATES = {
+    "user_tried_docs": (
+        "Cuando el usuario indique que ya siguió los pasos de la documentación y el problema persiste, "
+        "FIN debe solicitar el error exacto y el paso donde se bloqueó antes de escalar."
+    ),
+    "fin_repeats_solution": (
+        "Si FIN ya ofreció una solución y el problema persiste, debe reconocer el intento previo, "
+        "explorar una causa alternativa y no repetir el mismo procedimiento."
+    ),
+    "user_urgency": (
+        "Cuando el usuario exprese urgencia o emergencia, FIN debe priorizar la resolución inmediata "
+        "o escalar de forma expedita indicando el tiempo estimado de respuesta."
+    ),
+    "user_frustration": (
+        "Cuando el usuario exprese frustración o molestia, FIN debe reconocerla empáticamente antes "
+        "de continuar con pasos técnicos."
+    ),
+    "user_blocked": (
+        "Si el usuario está completamente bloqueado (sin acceso, sistema caído), FIN debe escalar "
+        "de inmediato con la descripción del bloqueo y el impacto operativo."
+    ),
+    "unnecessary_escalation_risk": (
+        "FIN no debe escalar cuando no tiene suficiente información para diagnosticar. "
+        "Debe solicitar datos específicos antes de transferir el caso."
+    ),
+    "default": (
+        "Cuando se detecte este patrón de conversación, FIN debe seguir el protocolo documentado "
+        "para este escenario, priorizando la resolución autónoma antes de escalar."
+    ),
+}
+
+GUIDELINE_PROBLEM_SIGNALS = {
+    "escalamiento sin criterios": [
+        "me pasaron con", "me transfirieron", "agente no supo",
+        "escalaron sin", "nadie me ayudó",
+    ],
+    "falta de resolución documentada": [
+        "no encuentro", "no hay artículo", "no existe documentación",
+        "no hay guía", "no encontré nada",
+    ],
+    "solución documentada insuficiente": [
+        "ya seguí los pasos", "seguí las instrucciones", "hice lo que dice",
+        "apliqué la guía", "seguí el manual", "hice el procedimiento",
+    ],
+    "respuesta genérica de FIN": [
+        "me dijo lo mismo", "misma respuesta", "respuesta repetida",
+        "no me ayuda", "respuesta automática",
+    ],
+    "fallo técnico sin guía": [
+        "error al", "no carga", "pantalla en blanco",
+        "se traba", "no responde", "caído",
+    ],
+    "urgencia no atendida": [
+        "hoy mismo", "urgente", "necesito ahora",
+        "no puedo esperar", "es crítico",
+    ],
+}
+
+GUIDELINE_FAILURE_MAP = {
+    "escalamiento sin criterios":        "FIN escala sin agotar opciones de resolución autónoma.",
+    "falta de resolución documentada":   "No existe documentación que FIN pueda usar para resolver este caso.",
+    "solución documentada insuficiente": "La documentación existe pero es insuficiente para guiar a FIN paso a paso.",
+    "respuesta genérica de FIN":         "FIN responde con información general sin resolver el problema específico.",
+    "fallo técnico sin guía":            "FIN no tiene una guía de diagnóstico técnico para este tipo de fallo.",
+    "urgencia no atendida":              "FIN no tiene protocolo de prioridad para casos urgentes.",
+}
+
+GUIDELINE_BEHAVIOR_MAP = {
+    "escalamiento sin criterios": (
+        "FIN debe agotar al menos 2 alternativas de resolución autónoma antes de escalar. "
+        "Al escalar, debe incluir: error exacto, pasos realizados y resultado de cada uno."
+    ),
+    "falta de resolución documentada": (
+        "Crear documentación específica para este caso. FIN debe solicitar más detalles al usuario "
+        "y escalar con información completa mientras la documentación no esté disponible."
+    ),
+    "solución documentada insuficiente": (
+        "Enriquecer la documentación con pasos más detallados, causas alternativas y criterio de escalamiento. "
+        "FIN debe reconocer cuando el usuario ya siguió los pasos y explorar causa alternativa."
+    ),
+    "respuesta genérica de FIN": (
+        "FIN debe identificar el problema específico antes de responder. "
+        "Si no puede diagnosticar con la información disponible, solicitar detalles adicionales."
+    ),
+    "fallo técnico sin guía": (
+        "Crear protocolo de diagnóstico técnico para este tipo de fallo: "
+        "síntomas, pasos de diagnóstico, solución y criterio de escalamiento."
+    ),
+    "urgencia no atendida": (
+        "FIN debe reconocer la urgencia en la primera respuesta, "
+        "priorizar resolución inmediata o escalar de forma expedita con tiempo estimado de respuesta."
+    ),
+}
+
+
+# ════════════════════════════════════════════════════════════════════════════ #
+# FUNCIONES — Módulo Guideline                                                  #
+# ════════════════════════════════════════════════════════════════════════════ #
+
+def detect_intention(text_lower: str) -> str:
+    """Detecta categoría dominante de un texto. Devuelve nombre de categoría o 'General'."""
+    for category, keywords in INTENTION_MAP:
+        if any(kw in text_lower for kw in keywords):
+            return category
+    return "General"
+
+
+def detect_emotion(text_lower: str) -> str:
+    """Detecta estado emocional. Devuelve: Frustrado / Molesto / Urgente / Neutral."""
+    if any(k in text_lower for k in FRUSTRATION_KEYWORDS):
+        return "Frustrado"
+    if any(k in text_lower for k in ANNOYANCE_KEYWORDS):
+        return "Molesto"
+    if any(k in text_lower for k in URGENCY_KEYWORDS):
+        return "Urgente"
+    return "Neutral"
+
+
+def detect_guideline_events(text_lower: str) -> list:
+    """Detecta eventos de conversación relevantes. Devuelve lista de event ids."""
+    return [
+        ev["id"]
+        for ev in GUIDELINE_EVENT_CATALOG
+        if any(sig in text_lower for sig in ev["signals"])
+    ]
+
+
+def detect_guideline_problems(text_lower: str) -> list:
+    """Detecta tipos de problema en conversaciones. Devuelve lista de problem keys."""
+    return [
+        ptype
+        for ptype, signals in GUIDELINE_PROBLEM_SIGNALS.items()
+        if any(sig in text_lower for sig in signals)
+    ]
+
+
+def guideline_risk_level(risk_score: int) -> str:
+    """Mapea risk_score numérico a ALTO/MEDIO/BAJO."""
+    if risk_score >= 7:
+        return "ALTO"
+    if risk_score >= 4:
+        return "MEDIO"
+    return "BAJO"
+
+
+def conflict_severity_level(severity: int) -> str:
+    """Mapea severidad de conflicto a ALTA/MEDIA/BAJA."""
+    if severity >= 10:
+        return "ALTA"
+    if severity >= 4:
+        return "MEDIA"
+    return "BAJA"
+
+
+def guideline_priority_from_risk(nivel_riesgo: str, categoria: str) -> str:
+    """Determina prioridad de implementación. Devuelve: CRÍTICA / ALTA / MEDIA / BAJA."""
+    if nivel_riesgo == "ALTO":
+        return "CRÍTICA"
+    if nivel_riesgo == "MEDIO":
+        return "ALTA"
+    if categoria in ("DIAN", "Seguridad", "Facturación", "Nómina"):
+        return "ALTA"
+    return "MEDIA"
+
+
+def guideline_impact_priority(total_impact_score: int) -> tuple:
+    """Dado total_impact_score, devuelve (impact_label, implementation_priority)."""
+    if total_impact_score >= 80:
+        impact_label = "Alto"
+    elif total_impact_score >= 50:
+        impact_label = "Medio"
+    else:
+        impact_label = "Bajo"
+    if total_impact_score >= 80:
+        impl_priority = "INMEDIATA"
+    elif total_impact_score >= 50:
+        impl_priority = "ALTA"
+    elif total_impact_score >= 30:
+        impl_priority = "MEDIA"
+    else:
+        impl_priority = "BAJA"
+    return impact_label, impl_priority
+
+
+def cluster_pattern_name(event_set: frozenset) -> str:
+    """Nombre del patrón para un conjunto de eventos."""
+    if event_set in GUIDELINE_PATTERN_NAMES:
+        return GUIDELINE_PATTERN_NAMES[event_set]
+    for k, v in GUIDELINE_PATTERN_NAMES.items():
+        if k.issubset(event_set):
+            return v
+    labels = [ev["label"] for ev in GUIDELINE_EVENT_CATALOG if ev["id"] in event_set]
+    return " + ".join(labels[:2]) if labels else "Patrón no clasificado"
+
+
+def guideline_template_for(event_set: frozenset) -> str:
+    """Selecciona plantilla de guideline más apropiada para un conjunto de eventos."""
+    for key in ["user_blocked", "user_urgency", "user_frustration",
+                "fin_repeats_solution", "user_tried_docs", "unnecessary_escalation_risk"]:
+        if key in event_set:
+            return GUIDELINE_TEMPLATES.get(key, GUIDELINE_TEMPLATES["default"])
+    return GUIDELINE_TEMPLATES["default"]
