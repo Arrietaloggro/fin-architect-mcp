@@ -2647,19 +2647,20 @@ async def architect_review(
     objective: str = ""
 ) -> str:
     """
-    Orquestador del FIN Architect MCP v2. Ejecuta el pipeline completo:
-    extract_guidelines → generate_guideline → audit_guideline →
-    optimize_guideline → classify_guideline → detect_conflicts →
-    score_guideline → simulate_fin y produce un reporte ejecutivo de
-    consultoría con hallazgos, plan de acción, madurez y conclusión del arquitecto.
+    Orquestador del FIN Architect MCP v3. Motor de decisiones arquitectónicas.
+    Ejecuta el pipeline completo: extract_guidelines → generate_guideline →
+    audit_guideline → optimize_guideline → classify_guideline → detect_conflicts →
+    score_guideline → simulate_fin y activa el ARCHITECT DECISION ENGINE para
+    clasificar guidelines, tomar la decisión de despliegue y construir el roadmap.
     """
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
     # ------------------------------------------------------------------ #
+    import re as _re
+
     def extract_score(score_output):
-        import re
-        m = re.search(r"(\d{1,3})/100", score_output)
+        m = _re.search(r"(\d{1,3})/100", score_output)
         return int(m.group(1)) if m else 0
 
     def text_jaccard(a, b):
@@ -3337,109 +3338,586 @@ async def architect_review(
             "después de aplicar los cambios indicados en el plan de acción, y antes de cualquier despliegue."
         )
 
-    # ------------------------------------------------------------------ #
-    # Construcción del reporte                                             #
-    # ------------------------------------------------------------------ #
+    # ================================================================== #
+    # ARCHITECT DECISION ENGINE                                          #
+    # Interpreta el pipeline completo y toma decisiones arquitectónicas #
+    # ================================================================== #
+    DECISION_PROD_THRESHOLD  = 90
+    DECISION_ELIM_THRESHOLD  = 70
+    DECISION_MERGE_THRESHOLD = 0.85
+
+    # --- Detectar guidelines involucradas en conflictos ---
+    conflicting_guidelines = set()
+    for line in conflict_lines:
+        refs = _re.findall(r'[Gg]uideline\s+(\d+)', line)
+        for r in refs:
+            idx_c = int(r) - 1
+            if 0 <= idx_c < len(final_guidelines):
+                conflicting_guidelines.add(final_guidelines[idx_c])
+
+    # --- Detectar guidelines con términos absolutos sin condición ---
+    absolute_markers = ["siempre ", "nunca ", "todos ", "ninguno "]
+    gl_absolute_set = set()
+    for g in final_guidelines:
+        gl_lower = g.lower()
+        if any(gl_lower.startswith(m) or f" {m}" in gl_lower for m in absolute_markers):
+            sc_abs = next((s for s in score_results if s["guideline"] == g), {})
+            if sc_abs.get("score", 100) < 85:
+                gl_absolute_set.add(g)
+
+    # --- Detectar pares FUSIONAR (85% ≤ sim < 90%) ---
+    merge_pairs_engine = []
+    used_engine_merge  = set()
+    for i_e, gi_e in enumerate(final_guidelines):
+        for j_e, gj_e in enumerate(final_guidelines):
+            if j_e <= i_e or i_e in used_engine_merge or j_e in used_engine_merge:
+                continue
+            sim_e = text_jaccard(gi_e, gj_e)
+            if sim_e >= DECISION_MERGE_THRESHOLD:
+                consolidated_e = max([gi_e, gj_e], key=len)
+                merge_pairs_engine.append({
+                    "original_a":   gi_e,
+                    "original_b":   gj_e,
+                    "consolidated": consolidated_e,
+                    "similarity":   round(sim_e * 100),
+                })
+                used_engine_merge.add(i_e)
+                used_engine_merge.add(j_e)
+
+    merged_in_engine = (
+        {p["original_a"] for p in merge_pairs_engine} |
+        {p["original_b"] for p in merge_pairs_engine}
+    )
+
+    # --- Clasificar cada guideline ---
+    gl_prod_ready  = []
+    gl_to_modify   = []
+    gl_to_eliminate = []
+
+    for g_d in final_guidelines:
+        sc_d    = next((s for s in score_results  if s["guideline"] == g_d), {})
+        aud_d   = next((a for a in audit_results  if a["guideline"] == g_d), {})
+        score_d = sc_d.get("score", 0)
+        has_d   = aud_d.get("has_issues", False)
+
+        if g_d in merged_in_engine:
+            continue  # manejada en FUSIONAR
+
+        # ELIMINAR
+        if score_d < DECISION_ELIM_THRESHOLD:
+            gl_to_eliminate.append({
+                "guideline": g_d, "score": score_d,
+                "reason": (
+                    f"Score {score_d}/100 — por debajo del umbral mínimo de producción "
+                    f"({DECISION_ELIM_THRESHOLD}/100). No garantiza comportamiento confiable de FIN."
+                ),
+            })
+            continue
+
+        if g_d in gl_absolute_set:
+            gl_to_eliminate.append({
+                "guideline": g_d, "score": score_d,
+                "reason": (
+                    "Usa términos absolutos ('siempre', 'nunca') sin condiciones explícitas. "
+                    "Está siendo reemplazada por versiones condicionales en este conjunto y "
+                    "genera riesgo de escalamientos innecesarios."
+                ),
+            })
+            continue
+
+        # LISTAS PARA PRODUCCIÓN
+        if (score_d >= DECISION_PROD_THRESHOLD
+                and not has_d
+                and g_d not in conflicting_guidelines):
+            gl_prod_ready.append({"guideline": g_d, "score": score_d})
+            continue
+
+        # MODIFICAR
+        mod_reasons = []
+        mod_actions = []
+        if score_d < DECISION_PROD_THRESHOLD:
+            mod_reasons.append(
+                f"Score {score_d}/100 — requiere mejora para alcanzar estándar de producción ({DECISION_PROD_THRESHOLD}/100)."
+            )
+            mod_actions.append("Agregar condiciones explícitas y contexto de aplicación.")
+        if has_d:
+            issue_texts = aud_d.get("issues", [])
+            if issue_texts:
+                mod_reasons.append(issue_texts[0])
+            mod_actions.append("Revisar y corregir los problemas detectados en auditoría.")
+        if g_d in conflicting_guidelines:
+            mod_reasons.append("Genera conflicto semántico con otras guidelines del conjunto.")
+            mod_actions.append("Acotar el alcance o añadir condiciones de precedencia.")
+        if not mod_reasons:
+            mod_reasons.append("Score aceptable pero requiere revisión antes del despliegue.")
+            mod_actions.append("Validar con simulate_fin antes de publicar.")
+
+        gl_to_modify.append({
+            "guideline": g_d,
+            "score":     score_d,
+            "reason":    "; ".join(mod_reasons),
+            "action":    "; ".join(mod_actions),
+            "impact":    "Alto" if g_d in conflicting_guidelines or score_d < 80 else "Medio",
+        })
+
+    # --- DECISIÓN DE DESPLIEGUE ---
+    n_prod_ready_d  = len(gl_prod_ready)
+    n_modify_d      = len(gl_to_modify)
+    n_eliminate_d   = len(gl_to_eliminate)
+    n_merge_engine  = len(merge_pairs_engine)
+    total_final_d   = len(final_guidelines)
+    total_approved  = n_prod_ready_d + n_merge_engine
+
+    prod_ratio = (n_prod_ready_d / total_final_d) if total_final_d else 0
+
+    if (health_score >= 80
+            and not has_conflicts
+            and n_eliminate_d == 0
+            and prod_ratio >= 0.70):
+        deploy_status = "🟢 READY FOR PRODUCTION"
+        deploy_color  = "green"
+        deploy_just   = (
+            f"El {round(prod_ratio * 100)}% de las guidelines supera el umbral de producción "
+            f"({DECISION_PROD_THRESHOLD}/100). No se detectaron conflictos ni guidelines que "
+            f"requieran eliminación. El conjunto está listo para despliegue inmediato."
+        )
+    elif (health_score >= 60
+          or (n_prod_ready_d >= total_final_d * 0.5 and not has_conflicts)):
+        deploy_status = "🟡 READY WITH RECOMMENDATIONS"
+        deploy_color  = "yellow"
+        issues_s = []
+        if n_modify_d > 0:
+            issues_s.append(f"{n_modify_d} guideline(s) requieren modificación")
+        if n_eliminate_d > 0:
+            issues_s.append(f"{n_eliminate_d} guideline(s) deben eliminarse")
+        if n_merge_engine > 0:
+            issues_s.append(f"{n_merge_engine} par(es) deben fusionarse")
+        deploy_just = (
+            f"El conjunto puede avanzar a producción con las correcciones indicadas: "
+            f"{', '.join(issues_s) if issues_s else 'ajustes menores recomendados'}. "
+            f"Desplegar únicamente las guidelines clasificadas como LISTAS PARA PRODUCCIÓN. "
+            f"No publicar las clasificadas como MODIFICAR o ELIMINAR sin revisión previa."
+        )
+    else:
+        deploy_status = "🔴 NOT READY"
+        deploy_color  = "red"
+        blockers = []
+        if has_conflicts:
+            blockers.append("conflictos semánticos sin resolver")
+        if n_eliminate_d > 0:
+            blockers.append(f"{n_eliminate_d} guideline(s) con score crítico")
+        if health_score < 60:
+            blockers.append(f"salud general por debajo del umbral ({health_score}/100)")
+        deploy_just = (
+            f"El conjunto NO está listo para producción. Bloqueadores: "
+            f"{', '.join(blockers) if blockers else 'múltiples problemas críticos'}. "
+            f"Resolver todos los bloqueadores y ejecutar una nueva revisión antes del despliegue."
+        )
+
+    # --- IMPACTO ESTIMADO ---
+    n_conflicts_count = len(conflict_lines)
+    n_absolute_elim   = sum(
+        1 for el in gl_to_eliminate
+        if "absolutos" in el.get("reason", "").lower()
+        or "siempre" in el.get("reason", "").lower()
+    )
+
+    esc_base = min(n_conflicts_count * 8 + n_absolute_elim * 10 + n_merge_engine * 5, 60)
+    esc_reduction_str = f"~{esc_base}–{min(esc_base + 10, 70)}%"
+
+    cond_ratio_d   = n_conditional / total_final_d if total_final_d else 0
+    auto_base      = round(cond_ratio_d * 40) + (5 if prod_ratio >= 0.6 else 0)
+    auto_str       = f"~{auto_base}–{auto_base + 10}%"
+
+    time_base = max(0, min(round((avg_score - 70) / 3) + n_merge_engine * 3, 35)) if avg_score > 70 else 0
+    time_str  = f"~{time_base}–{min(time_base + 8, 40)}%"
+
+    load_base = round(esc_base * 0.7)
+    load_str  = f"~{load_base}–{min(load_base + 8, 55)}%"
+
+    cons_base = min(n_merge_engine * 12 + (15 if has_conflicts else 0) + n_absolute_elim * 8, 50)
+    cons_str  = f"~{cons_base}–{min(cons_base + 10, 60)}%"
+
+    # --- ROADMAP ---
+    roadmap = []
+
+    phase1_tasks = []
+    if gl_to_eliminate:
+        phase1_tasks.append(
+            f"Eliminar {len(gl_to_eliminate)} guideline(s) clasificada(s) para eliminación "
+            f"(ver sección DECISIONES ARQUITECTÓNICAS → ELIMINAR)."
+        )
+    if has_conflicts:
+        phase1_tasks.append("Resolver conflictos semánticos identificados entre guidelines.")
+    if not phase1_tasks:
+        phase1_tasks.append("Verificar que no queden guidelines obsoletas en el repositorio.")
+    roadmap.append({
+        "phase":    "Fase 1 — Depuración y Estabilización",
+        "obj":      "Eliminar riesgos críticos antes del despliegue.",
+        "tasks":    phase1_tasks,
+        "duration": "1–2 días",
+    })
+
+    phase2_tasks = []
+    if merge_pairs_engine:
+        phase2_tasks.append(
+            f"Fusionar {n_merge_engine} par(es) de guidelines con similitud ≥ 85% "
+            f"usando las versiones consolidadas generadas en este reporte."
+        )
+    if merge_log:
+        phase2_tasks.append(
+            f"Confirmar las {len(merge_log)} fusión/fusiones automáticas ≥ 90% "
+            f"generadas en este reporte."
+        )
+    if not phase2_tasks:
+        phase2_tasks.append("Validar consistencia del conjunto de guidelines activo.")
+    roadmap.append({
+        "phase":    "Fase 2 — Consolidación",
+        "obj":      "Reducir redundancia y mejorar consistencia del repositorio.",
+        "tasks":    phase2_tasks,
+        "duration": "1–3 días",
+    })
+
+    phase3_tasks = []
+    if gl_to_modify:
+        phase3_tasks.append(
+            f"Aplicar modificaciones a {n_modify_d} guideline(s) según las acciones "
+            f"recomendadas en la sección MODIFICAR."
+        )
+    if optimized_map:
+        phase3_tasks.append(
+            f"Incorporar las {len(optimized_map)} versión(es) optimizadas "
+            f"generadas en este análisis."
+        )
+    phase3_tasks.append(
+        "Ejecutar score_guideline en las guidelines modificadas para verificar mejora."
+    )
+    roadmap.append({
+        "phase":    "Fase 3 — Optimización",
+        "obj":      "Elevar la calidad técnica del conjunto al estándar de producción.",
+        "tasks":    phase3_tasks,
+        "duration": "2–4 días",
+    })
+
+    phase4_tasks = [
+        "Ejecutar simulate_fin con las guidelines aprobadas y conversaciones representativas.",
+        "Ejecutar architect_review con el conjunto final para confirmar estado de despliegue.",
+        f"Desplegar las {total_approved} guideline(s) aprobadas al entorno de producción de FIN.",
+        "Programar revisión arquitectónica periódica.",
+    ]
+    roadmap.append({
+        "phase":    "Fase 4 — Validación y Despliegue",
+        "obj":      "Confirmar comportamiento esperado e implementar en producción.",
+        "tasks":    phase4_tasks,
+        "duration": "1–2 días",
+    })
+
+    # --- DECISIONES DEL ARQUITECTO (narrativa dinámica) ---
+    arch_parts = []
+
+    arch_parts.append(
+        f"El análisis de {total_convs} conversación(es) sobre {product} revela que el conjunto "
+        f"de guidelines "
+        + (
+            "requiere intervención antes del despliegue."
+            if deploy_color == "red"
+            else "está en condiciones de avanzar con los ajustes indicados."
+            if deploy_color == "yellow"
+            else "está listo para producción."
+        )
+    )
+
+    for el in gl_to_eliminate[:3]:
+        short_el = el["guideline"][:80] + ("..." if len(el["guideline"]) > 80 else "")
+        arch_parts.append(
+            f"La guideline \"{short_el}\" no debería desplegarse. {el['reason']}"
+        )
+
+    for mp in merge_pairs_engine[:3]:
+        a_s = mp["original_a"][:60] + ("..." if len(mp["original_a"]) > 60 else "")
+        b_s = mp["original_b"][:60] + ("..." if len(mp["original_b"]) > 60 else "")
+        c_s = mp["consolidated"][:80] + ("..." if len(mp["consolidated"]) > 80 else "")
+        arch_parts.append(
+            f"Las guidelines \"{a_s}\" y \"{b_s}\" describen el mismo comportamiento "
+            f"con una similitud del {mp['similarity']}%. "
+            f"Deben fusionarse en: \"{c_s}\". "
+            f"La guideline consolidada cubre ambos escenarios con menor complejidad "
+            f"y menor riesgo operacional."
+        )
+
+    for mod in gl_to_modify[:2]:
+        short_mod = mod["guideline"][:70] + ("..." if len(mod["guideline"]) > 70 else "")
+        arch_parts.append(
+            f"La guideline \"{short_mod}\" tiene potencial pero requiere ajuste: "
+            f"{mod['reason']} Acción recomendada: {mod['action']}"
+        )
+
+    if gl_prod_ready:
+        arch_parts.append(
+            f"Se recomienda implementar únicamente las {n_prod_ready_d} guideline(s) "
+            f"clasificadas como listas para producción y repetir el análisis con "
+            f"architect_review después de incorporar nuevas conversaciones."
+        )
+
+    if deploy_color == "red":
+        arch_parts.append(
+            "Ninguna guideline debe desplegarse en su estado actual. "
+            "El conjunto requiere depuración, resolución de conflictos y revalidación "
+            "completa antes de ser entregado a producción."
+        )
+    elif deploy_color == "yellow":
+        arch_parts.append(
+            "El despliegue parcial es viable. Publicar exclusivamente las guidelines "
+            "marcadas como LISTAS PARA PRODUCCIÓN. Las guidelines en MODIFICAR y FUSIONAR "
+            "deben procesarse en el ciclo siguiente antes de incluirse."
+        )
+    else:
+        arch_parts.append(
+            "El conjunto está listo. El despliegue puede proceder con confianza. "
+            "Mantener la cadencia de revisión periódica para detectar degradación "
+            "conforme el producto evoluciona."
+        )
+
+    arch_decisions_narrative = "\n\n".join(arch_parts)
+
+    # --- MÉTRICAS DE GOBERNANZA ---
+    n_active_gov    = len(final_guidelines)
+    n_new_gov       = len([g for g in final_guidelines if g not in current_guidelines])
+    n_elim_gov      = n_eliminate_d
+    n_merged_gov    = len(merge_log) + n_merge_engine
+    n_modified_gov  = len(optimized_map)
+    coverage_gov    = round(
+        min(100, (n_prod_ready_d + n_merge_engine) / max(total_final_d, 1) * 100
+            + (10 if not has_conflicts else 0))
+    )
+    consistency_gov = mat_consistency
+    complexity_raw  = total_final_d * 5 + n_conflicts_count * 10 + n_merged_gov * 3
+    if complexity_raw < 30:
+        complexity_label_gov = "Baja"
+    elif complexity_raw < 70:
+        complexity_label_gov = "Media"
+    elif complexity_raw < 120:
+        complexity_label_gov = "Alta"
+    else:
+        complexity_label_gov = "Muy Alta"
+
+    if deploy_color == "green":
+        gov_state = "✅ ESTABLE"
+    elif deploy_color == "yellow":
+        gov_state = "⚠️ EN PROGRESO"
+    else:
+        gov_state = "🔴 REQUIERE INTERVENCIÓN"
+
+    # ================================================================== #
+    # Construcción del reporte v3                                         #
+    # ================================================================== #
     sep  = "=" * 48
     div  = "-" * 40
-    parts = [sep, "FIN ARCHITECT REVIEW", f"{sep}\n"]
+    div2 = "─" * 40
+    parts = [sep, "FIN ARCHITECT REVIEW  ·  v3", f"{sep}\n"]
 
+    # Cabecera
     parts += ["PRODUCTO\n", f"{product.upper()}\n"]
     parts += ["OBJETIVO\n", f"{objective if objective else 'No especificado'}\n"]
-
-    # MEJORA 2 — Resumen ejecutivo de consultoría
     parts += ["RESUMEN EJECUTIVO\n", executive_summary + "\n"]
-
-    parts += ["SALUD GENERAL DEL PRODUCTO\n", f"{health_emoji} {health_score}/100 — {health_label}\n"]
-
+    parts += ["SALUD GENERAL DEL PRODUCTO\n",
+              f"{health_emoji} {health_score}/100 — {health_label}\n"]
     parts += ["CONVERSACIONES ANALIZADAS\n", f"{total_convs} conversación(es)\n"]
 
-    # MEJORA 1 — Hallazgos principales
+    # Hallazgos principales
     parts += ["HALLAZGOS PRINCIPALES\n"]
-    for f in findings:
-        parts.append(f)
+    for fi in findings:
+        parts.append(fi)
     parts.append("")
 
+    # ──────────────────────────────────────────────────────────────────
+    #  ARCHITECT DECISION ENGINE
+    # ──────────────────────────────────────────────────────────────────
+    parts += [div2, "ARCHITECT DECISION ENGINE", f"{div2}\n"]
+
+    # DECISIONES ARQUITECTÓNICAS
+    parts += ["DECISIONES ARQUITECTÓNICAS\n"]
+
+    # ► LISTAS PARA PRODUCCIÓN
+    parts.append("► LISTAS PARA PRODUCCIÓN\n")
+    if gl_prod_ready:
+        for item_p in gl_prod_ready:
+            sc_p = item_p["score"]
+            short_p = item_p["guideline"][:90] + ("..." if len(item_p["guideline"]) > 90 else "")
+            parts.append(f"  ✅ [{sc_p}/100] {short_p}")
+    else:
+        parts.append("  — Ninguna guideline cumple todos los criterios de producción en este ciclo.")
+    parts.append("")
+
+    # ► MODIFICAR
+    parts.append("► MODIFICAR\n")
+    if gl_to_modify:
+        for item_m in gl_to_modify:
+            short_m = item_m["guideline"][:80] + ("..." if len(item_m["guideline"]) > 80 else "")
+            parts.append(f"  ⚙️  [{item_m['score']}/100] {short_m}")
+            parts.append(f"      Motivo:            {item_m['reason']}")
+            parts.append(f"      Acción recomendada: {item_m['action']}")
+            parts.append(f"      Impacto esperado:   {item_m['impact']}")
+            parts.append("")
+    else:
+        parts.append("  — No hay guidelines que requieran modificación en este ciclo.\n")
+
+    # ► FUSIONAR
+    parts.append("► FUSIONAR\n")
+    all_fusion = []
+    for orig_f, rep_f in merge_log:
+        all_fusion.append({
+            "original_a":   orig_f,
+            "original_b":   None,
+            "consolidated": rep_f,
+            "similarity":   "≥ 90",
+            "source":       "auto-consolidación ≥ 90%",
+        })
+    for mp_f in merge_pairs_engine:
+        all_fusion.append({
+            "original_a":   mp_f["original_a"],
+            "original_b":   mp_f["original_b"],
+            "consolidated": mp_f["consolidated"],
+            "similarity":   str(mp_f["similarity"]),
+            "source":       f"similitud {mp_f['similarity']}%",
+        })
+    if all_fusion:
+        for fi_f in all_fusion:
+            a_f  = fi_f["original_a"][:75] + ("..." if len(fi_f["original_a"]) > 75 else "")
+            c_f  = fi_f["consolidated"][:90] + ("..." if len(fi_f["consolidated"]) > 90 else "")
+            parts.append(f"  📎 Similitud: {fi_f['similarity']}%  ({fi_f['source']})")
+            parts.append(f"     Guideline A:       {a_f}")
+            if fi_f["original_b"]:
+                b_f = fi_f["original_b"][:75] + ("..." if len(fi_f["original_b"]) > 75 else "")
+                parts.append(f"     Guideline B:       {b_f}")
+            parts.append(f"     ↓")
+            parts.append(f"     Guideline final:   {c_f}")
+            parts.append(f"     Justificación:     Ambas describen el mismo comportamiento. "
+                         f"La versión consolidada es más completa y reduce la complejidad del repositorio.")
+            parts.append("")
+    else:
+        parts.append("  — No se detectaron pares candidatos a fusión en este ciclo.\n")
+
+    # ► ELIMINAR
+    parts.append("► ELIMINAR\n")
+    if gl_to_eliminate:
+        for item_e in gl_to_eliminate:
+            short_e = item_e["guideline"][:80] + ("..." if len(item_e["guideline"]) > 80 else "")
+            parts.append(f"  🗑️  [{item_e['score']}/100] {short_e}")
+            parts.append(f"      Razón: {item_e['reason']}")
+            parts.append("")
+    else:
+        parts.append("  — No hay guidelines que deban eliminarse en este ciclo.\n")
+
+    # DECISIÓN DE DESPLIEGUE
+    parts += [div2, "DECISIÓN DE DESPLIEGUE\n"]
+    parts.append(f"  {deploy_status}\n")
+    parts.append(f"  Justificación: {deploy_just}\n")
+
+    # IMPACTO ESTIMADO
+    parts += [div2, "IMPACTO ESTIMADO\n"]
+    parts.append(f"  Reducción de escalamientos              {esc_reduction_str}")
+    parts.append(f"  Incremento de resolución autónoma       {auto_str}")
+    parts.append(f"  Reducción tiempo promedio de atención   {time_str}")
+    parts.append(f"  Disminución de carga para agentes       {load_str}")
+    parts.append(f"  Incremento esperado de consistencia     {cons_str}")
+    parts.append("")
+    parts.append(
+        "  Nota: estimaciones calculadas a partir de conflictos detectados, score promedio, "
+        "guidelines consolidadas, cobertura de patrones y proporción de flujos condicionales."
+    )
+    parts.append("")
+
+    # ROADMAP DE IMPLEMENTACIÓN
+    parts += [div2, "ROADMAP DE IMPLEMENTACIÓN\n"]
+    for rm in roadmap:
+        parts.append(f"  {rm['phase']}  [{rm['duration']}]")
+        parts.append(f"  Objetivo: {rm['obj']}")
+        for t_rm in rm["tasks"]:
+            parts.append(f"    • {t_rm}")
+        parts.append("")
+
+    # DECISIONES DEL ARQUITECTO
+    parts += [div2, "DECISIONES DEL ARQUITECTO\n"]
+    for sentence in arch_parts:
+        parts.append(f"  {sentence}")
+        parts.append("")
+
+    # MÉTRICAS DE GOBERNANZA
+    parts += [div2, "MÉTRICAS DE GOBERNANZA\n"]
+    parts.append(f"  Guidelines activas          {n_active_gov}")
+    parts.append(f"  Guidelines nuevas           {n_new_gov}")
+    parts.append(f"  Guidelines eliminadas       {n_elim_gov}")
+    parts.append(f"  Guidelines fusionadas       {n_merged_gov}")
+    parts.append(f"  Guidelines modificadas      {n_modified_gov}")
+    parts.append(f"  Cobertura estimada          {coverage_gov}%")
+    parts.append(f"  Consistencia                {consistency_gov}%")
+    parts.append(f"  Complejidad del repositorio {complexity_label_gov}")
+    parts.append(f"  Estado general              {gov_state}")
+    parts.append("")
+
+    parts.append(div2)
+    parts.append("")
+
+    # ──────────────────────────────────────────────────────────────────
+    #  ANÁLISIS DE REFERENCIA (datos del pipeline para trazabilidad)
+    # ──────────────────────────────────────────────────────────────────
     parts += ["PATRONES DETECTADOS\n"]
     if patterns_block:
-        for line in patterns_block:
-            if line.strip():
-                parts.append(line)
+        for line_pb in patterns_block:
+            if line_pb.strip():
+                parts.append(line_pb)
     else:
         parts.append("- No se detectaron patrones con suficiente recurrencia.")
     parts.append("")
 
-    # MEJORA 6 — Guidelines consolidadas (fusionadas si aplica)
-    parts += ["NUEVAS GUIDELINES PROPUESTAS\n"]
+    parts += ["GUIDELINES DEL CICLO\n"]
     if merge_log:
-        parts.append("NOTA: Las siguientes guidelines incluyen fusiones automáticas de duplicados (similitud ≥ 90%).\n")
-        for orig, rep in merge_log:
-            o_short = orig[:80] + ("..." if len(orig) > 80 else "")
-            r_short = rep[:80] + ("..." if len(rep) > 80 else "")
-            parts.append(f"  FUSIONADA: \"{o_short}\"")
-            parts.append(f"  → CONSOLIDADA EN: \"{r_short}\"\n")
-    if final_guidelines:
-        for i, g in enumerate(final_guidelines, start=1):
-            cl = next((c for c in classification_results if c["guideline"] == g), {})
-            sc = next((s for s in score_results     if s["guideline"] == g), {})
-            score_str = f"Score: {sc.get('score', '—')}/100" if sc else ""
-            cat_str   = cl.get("category", "") if cl else ""
-            pri_str   = cl.get("priority", "") if cl else ""
-            parts.append(f"{i}. {g}")
-            if cat_str or score_str or pri_str:
-                parts.append(f"   [{cat_str} | {pri_str} | {score_str}]")
-    else:
-        parts.append("- No se generaron nuevas guidelines.")
+        parts.append("Fusiones automáticas ≥ 90% aplicadas antes del pipeline:\n")
+        for orig_ml, rep_ml in merge_log:
+            o_s = orig_ml[:70] + ("..." if len(orig_ml) > 70 else "")
+            r_s = rep_ml[:70] + ("..." if len(rep_ml) > 70 else "")
+            parts.append(f"  ORIGINAL:    {o_s}")
+            parts.append(f"  → FUSIONADA: {r_s}\n")
+    for i_g, g_g in enumerate(final_guidelines, start=1):
+        cl_g = next((c for c in classification_results if c["guideline"] == g_g), {})
+        sc_g = next((s for s in score_results          if s["guideline"] == g_g), {})
+        score_s = f"Score: {sc_g.get('score', '—')}/100" if sc_g else ""
+        cat_s   = cl_g.get("category", "") if cl_g else ""
+        pri_s   = cl_g.get("priority", "") if cl_g else ""
+        parts.append(f"{i_g}. {g_g}")
+        if cat_s or score_s or pri_s:
+            parts.append(f"   [{cat_s} | {pri_s} | {score_s}]")
     parts.append("")
 
-    parts += ["RESULTADO DE AUDITORÍA\n"]
+    parts += ["AUDITORÍA\n"]
     if guidelines_clean:
         parts.append(f"✅ {len(guidelines_clean)} guideline(s) sin problemas críticos.")
     if guidelines_with_issues:
-        parts.append(f"⚠️ {len(guidelines_with_issues)} guideline(s) con problemas detectados:")
-        for a in guidelines_with_issues:
-            short = a["guideline"][:80] + ("..." if len(a["guideline"]) > 80 else "")
-            parts.append(f"- \"{short}\"")
-            for issue in a["issues"]:
-                parts.append(f"  {issue}")
+        parts.append(f"⚠️ {len(guidelines_with_issues)} guideline(s) con problemas:")
+        for aud_item in guidelines_with_issues:
+            short_aud = aud_item["guideline"][:75] + ("..." if len(aud_item["guideline"]) > 75 else "")
+            parts.append(f"  - \"{short_aud}\"")
+            for iss in aud_item["issues"]:
+                parts.append(f"    {iss}")
     parts.append("")
 
-    parts += ["OPTIMIZACIONES APLICADAS\n"]
-    if optimized_map:
-        for original, optimized_v in optimized_map.items():
-            orig_short = original[:70] + ("..." if len(original) > 70 else "")
-            opt_short  = optimized_v[:70] + ("..." if len(optimized_v) > 70 else "")
-            parts.append(f"ANTES:    {orig_short}")
-            parts.append(f"DESPUÉS:  {opt_short}\n")
-    else:
-        parts.append("- No fue necesario aplicar optimizaciones.\n")
-
-    parts += ["CLASIFICACIÓN\n"]
-    for c in classification_results:
-        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
-        parts.append(
-            f"- \"{short}\"\n"
-            f"  Categoría: {c['category']} | Subcategoría: {c['subcategory']} "
-            f"| Riesgo: {c['risk']} | Prioridad: {c['priority']}"
-        )
-    parts.append("")
-
-    parts += ["CONFLICTOS DETECTADOS\n"]
+    parts += ["CONFLICTOS\n"]
     if has_conflicts:
-        parts.append("⚠️ Se detectaron conflictos entre guidelines:")
-        for line in conflict_lines[:6]:
-            parts.append(line)
+        parts.append("⚠️ Conflictos detectados:")
+        for cl_line in conflict_lines[:6]:
+            parts.append(f"  {cl_line}")
     else:
-        parts.append("✅ No se detectaron conflictos entre las guidelines.")
+        parts.append("✅ No se detectaron conflictos.")
     parts.append("")
 
     parts += ["PUNTAJE DE CALIDAD\n"]
-    parts.append(f"Promedio: {avg_score}/100 | Máximo: {max_score}/100 | Mínimo: {min_score}/100\n")
-    for s in sorted(score_results, key=lambda x: -x["score"]):
-        short  = s["guideline"][:65] + ("..." if len(s["guideline"]) > 65 else "")
-        interp = f" — {s['interpretation']}" if s["interpretation"] else ""
-        parts.append(f"- {s['score']}/100{interp}")
-        parts.append(f"  \"{short}\"")
+    parts.append(f"Promedio: {avg_score}/100  |  Máx: {max_score}/100  |  Mín: {min_score}/100\n")
+    for sc_item in sorted(score_results, key=lambda x: -x["score"]):
+        short_sc = sc_item["guideline"][:65] + ("..." if len(sc_item["guideline"]) > 65 else "")
+        interp_s = f" — {sc_item['interpretation']}" if sc_item["interpretation"] else ""
+        parts.append(f"  {sc_item['score']}/100{interp_s}")
+        parts.append(f"  \"{short_sc}\"")
     parts.append("")
 
     parts += ["SIMULACIÓN FINAL\n"]
@@ -3449,69 +3927,27 @@ async def architect_review(
         "priority":  "Prioridad",
         "decision":  "Decisión de FIN",
         "esc_risk":  "Riesgo de escalamiento",
-        "confidence":"Nivel de confianza",
+        "confidence": "Nivel de confianza",
     }
-    for key, label in sim_label_map.items():
-        if key in sim_values:
-            parts.append(f"{label}: {sim_values[key]}")
+    for sim_key, sim_label in sim_label_map.items():
+        if sim_key in sim_values:
+            parts.append(f"  {sim_label}: {sim_values[sim_key]}")
     parts.append("")
 
-    # MEJORA 4 — Madurez del producto
+    # Madurez y conclusión
     parts += ["MADUREZ DEL PRODUCTO\n"]
-    parts.append(f"Madurez de Guidelines          {mat_guidelines}% — {mat_label(mat_guidelines)}")
-    parts.append(f"Madurez de Escalamientos        {mat_escalation}% — {mat_label(mat_escalation)}")
-    parts.append(f"Madurez de Resolución Autónoma  {mat_autonomous}% — {mat_label(mat_autonomous)}")
-    parts.append(f"Madurez de Consistencia         {mat_consistency}% — {mat_label(mat_consistency)}")
-    parts.append(f"\nMadurez Global                  {mat_global}% — {mat_label(mat_global)}\n")
+    parts.append(f"  Guidelines          {mat_guidelines}% — {mat_label(mat_guidelines)}")
+    parts.append(f"  Escalamientos       {mat_escalation}% — {mat_label(mat_escalation)}")
+    parts.append(f"  Resolución Autónoma {mat_autonomous}% — {mat_label(mat_autonomous)}")
+    parts.append(f"  Consistencia        {mat_consistency}% — {mat_label(mat_consistency)}")
+    parts.append(f"\n  Global              {mat_global}% — {mat_label(mat_global)}\n")
 
-    parts += ["RIESGOS\n"]
-    for r in risks:
-        parts.append(f"- {r}")
-    parts.append("")
-
-    parts += ["PRIORIDAD DE IMPLEMENTACIÓN\n"]
-    idx = 1
-    for c in urgent:
-        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
-        parts.append(f"{idx}. [URGENTE] \"{short}\"")
-        idx += 1
-    for c in high:
-        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
-        parts.append(f"{idx}. [ALTA] \"{short}\"")
-        idx += 1
-    for c in normal:
-        short = c["guideline"][:70] + ("..." if len(c["guideline"]) > 70 else "")
-        parts.append(f"{idx}. [{c['priority']}] \"{short}\"")
-        idx += 1
-    parts.append("")
-
-    parts += ["RECOMENDACIONES\n"]
-    for r in recommendations:
-        parts.append(f"- {r}")
-    parts.append("")
-
-    # MEJORA 3 — Plan de acción priorizado
-    parts += ["PLAN DE ACCIÓN PRIORIZADO\n"]
-    for act in action_plan:
-        parts.append(f"Acción\n{act['action']}")
-        parts.append(f"\nImpacto\n{act['impact']}")
-        parts.append(f"\nEsfuerzo\n{act['effort']}")
-        parts.append(f"\nPrioridad\n{act['priority']}")
-        parts.append(f"\n{div}")
-    parts.append("")
-
-    parts += ["PRÓXIMOS PASOS\n"]
-    for i, step in enumerate(next_steps, start=1):
-        parts.append(f"{i}. {step}")
-    parts.append("")
-
-    # MEJORA 5 — Conclusión del Arquitecto
     parts += ["CONCLUSIÓN DEL ARQUITECTO\n"]
-    parts.append(f"Estado actual\n{estado}\n")
-    parts.append(f"Principal riesgo\n{principal_risk}\n")
-    parts.append(f"Mayor oportunidad\n{oportunidad}\n")
-    parts.append(f"Recomendación inmediata\n{immediate_rec}\n")
-    parts.append(f"Siguiente revisión recomendada\n{next_review}\n")
+    parts.append(f"  Estado actual\n  {estado}\n")
+    parts.append(f"  Principal riesgo\n  {principal_risk}\n")
+    parts.append(f"  Mayor oportunidad\n  {oportunidad}\n")
+    parts.append(f"  Recomendación inmediata\n  {immediate_rec}\n")
+    parts.append(f"  Siguiente revisión\n  {next_review}\n")
 
     parts.append(sep)
 
