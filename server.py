@@ -2367,7 +2367,9 @@ async def repository_review(
     parts.append(f"    • Guidelines bloqueadas   : {total_g_blocked} × 8  = {total_g_blocked * 8} pts")
     _non_blocked_critical = max(0, total_a_critical - total_a_blocked)
     parts.append(f"    • Críticos no bloqueados  : {_non_blocked_critical} × 5  = {_non_blocked_critical * 5} pts")
-    parts.append(f"    Total raw: {_debt_raw} pts  →  Debt score: {knowledge_debt}/100")
+    _debt_raw_display = (total_a_blocked*15 + total_g_conflicts*10 + total_a_dups*8
+                          + len(globally_missing)*12 + total_g_blocked*8 + _non_blocked_critical*5)
+    parts.append(f"    Total raw: {_debt_raw_display} pts  →  Debt score: {knowledge_debt}/100")
     parts.append("")
 
     # TOP OPORTUNIDADES
