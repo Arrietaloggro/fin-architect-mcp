@@ -3752,6 +3752,361 @@ async def recommend_improvements(
 
 
 @mcp.tool()
+async def fin_dashboard(
+    products: list,
+    context: str = ""
+) -> str:
+    """
+    Dashboard Ejecutivo unificado del estado completo de FIN.
+    Punto de entrada para cualquier líder que quiera conocer el estado del ecosistema.
+
+    Reutiliza internamente la lógica de repository_review y recommend_improvements
+    sin reimplementar ninguna lógica propia de análisis.
+
+    products : lista de dicts con 'nombre', 'guidelines' (list[str]),
+               'knowledge_articles' (list[str])
+    context  : contexto adicional opcional
+    """
+
+    # ── Paso 1: ejecutar repository_review ───────────────────────────────────
+    rr_output = await repository_review(products=products, context=context)
+
+    # ── Paso 2: ejecutar recommend_improvements con la salida de rr ──────────
+    ri_output = await recommend_improvements(
+        repository_review=rr_output,
+        knowledge_review="",
+        architect_review="",
+        context=context
+    )
+
+    # ── Paso 3: extraer métricas del texto generado ───────────────────────────
+    import re
+
+    def _int(pattern, text, default=0):
+        m = re.search(pattern, text, re.IGNORECASE)
+        return int(m.group(1)) if m else default
+
+    rrl = rr_output.lower()
+    ril = ri_output.lower()
+
+    global_health    = _int(r"salud global\s*[:\|]+\s*(\d+)", rrl, 75)
+    knowledge_debt   = _int(r"knowledge debt\s*[:\|]+\s*(\d+)", rrl, 30)
+    coverage_pct     = _int(r"cobertura\s+(?:global|temática)\s*[:\|]+\s*(\d+)%", rrl, 70)
+    total_g_conflicts= _int(r"conflictos\s+guidelines\s*[:\|]+\s*(\d+)", rrl, 0)
+    total_a_dups     = _int(r"artículos duplicados\s*[:\|]+\s*(\d+)", rrl, 0)
+    total_a_blocked  = _int(r"artículos\s+bloqueados\s*[:\|]+\s*(\d+)", rrl, 0)
+    total_g_blocked  = _int(r"guidelines\s+bloqueadas\s*[:\|]+\s*(\d+)", rrl, 0)
+    prod_blocked_cnt = _int(r"productos bloqueados\s*[:\|]+\s*(\d+)", rrl, 0)
+    prod_high_risk   = _int(r"productos en riesgo alto\s*[:\|]+\s*(\d+)", rrl, 0)
+    total_articles   = _int(r"artículos totales\s*[:\|]+\s*(\d+)", rrl, 0)
+    total_guidelines = _int(r"guidelines totales\s*[:\|]+\s*(\d+)", rrl, 0)
+
+    # Cobertura faltante
+    m_mc = re.search(r"faltantes\s*:\s*([^\n]+)", rrl)
+    missing_cats_str = m_mc.group(1).strip() if m_mc else ""
+    missing_cats_count = len([c for c in missing_cats_str.split(",")
+                               if c.strip() and "ninguna" not in c.strip()])
+
+    # Simulación Top 5 desde recommend_improvements
+    sim5_health  = _int(r"top 5.*?health score\s*.*?→\s*(\d+)/100", ril, global_health)
+    sim5_debt    = _int(r"top 5.*?knowledge debt\s*.*?→\s*(\d+)/100", ril, knowledge_debt)
+    sim5_esc     = _int(r"top 5.*?reducción escalamientos\s*[:\|]+\s*↓\s*~(\d+)%", ril, 0)
+    sim5_res     = _int(r"top 5.*?resolución autónoma\s*[:\|]+\s*↑\s*~(\d+)%", ril, 0)
+    sim5_cov     = _int(r"top 5.*?cobertura temática\s*.*?→\s*(\d+)%", ril, coverage_pct)
+
+    # Loop risk global (proxy: si hay artículos bloqueados → presencia de loop risk)
+    loop_risk_level = "CRÍTICO" if total_a_blocked >= 3 else (
+        "ALTO"   if total_a_blocked >= 1 else (
+        "MEDIO"  if prod_high_risk >= 1 else "BAJO"))
+
+    # Resolución autónoma esperada (baseline heurístico)
+    _esc_avoidable = max(0, 30 - (total_g_conflicts * 3) - (total_a_blocked * 5))
+    _resolution    = max(40, min(95, global_health - (total_a_blocked * 8) - (total_g_conflicts * 3)))
+
+    # ── Paso 4: top risks y top opportunities desde recommend_improvements ────
+
+    # Extraer top recomendaciones del texto de recommend_improvements
+    _rec_blocks = re.findall(
+        r"#(\d+)\s+(.+?)\n\s+Descripción\s*:\s*(.+?)\n.*?ROI\s*[:\|]+\s*[★☆ ]+\s*([\d.]+)",
+        ri_output, re.DOTALL
+    )
+    top_opps = []
+    for b in _rec_blocks[:5]:
+        top_opps.append({
+            "num": b[0], "nombre": b[1].strip(), "desc": b[2].strip()[:90], "roi": b[3]
+        })
+
+    # Quick wins desde recommend_improvements (sección QUICK WINS)
+    qw_section = re.search(r"QUICK WINS.*?\n(.*?)(?=──────|PROYECTOS|$)", ri_output, re.DOTALL)
+    qw_lines = []
+    if qw_section:
+        for line in qw_section.group(1).splitlines():
+            line = line.strip()
+            if line.startswith("⚡"):
+                qw_lines.append(line.lstrip("⚡").strip())
+
+    # Roadmap desde recommend_improvements
+    roadmap_week_lines   = []
+    roadmap_sprint_lines = []
+    roadmap_month_lines  = []
+
+    _rm_week  = re.search(r"Esta semana\n(.*?)(?=Próximo Sprint|Próximo Mes|🔭|$)", ri_output, re.DOTALL)
+    _rm_sprint = re.search(r"Próximo Sprint.*?\n(.*?)(?=Próximo Mes|🔭|$)", ri_output, re.DOTALL)
+    _rm_month  = re.search(r"Próximo Mes\n(.*?)(?=Próximo Trimestre|🔭|$)", ri_output, re.DOTALL)
+
+    def _extract_arrows(block):
+        if not block:
+            return []
+        return [l.strip().lstrip("→").strip() for l in block.group(1).splitlines()
+                if l.strip().startswith("→")][:4]
+
+    roadmap_week_lines   = _extract_arrows(_rm_week)
+    roadmap_sprint_lines = _extract_arrows(_rm_sprint)
+    roadmap_month_lines  = _extract_arrows(_rm_month)
+
+    # ── Paso 5: scores por dimensión ─────────────────────────────────────────
+
+    # Knowledge health (proxy: avg article health across products)
+    _know_health = max(0, global_health - (total_a_blocked * 5) - (total_a_dups * 2))
+    _know_health = min(100, _know_health)
+
+    # Guideline health
+    _guide_health = max(0, 100 - total_g_blocked * 15 - total_g_conflicts * 8)
+    _guide_health = min(100, _guide_health)
+
+    # Repository health (combo)
+    _repo_health = round((_know_health * 0.6 + _guide_health * 0.4))
+    if prod_blocked_cnt > 0:
+        _repo_health = min(_repo_health, 60)
+
+    # Recommendation health (how many top recs are quick wins = low effort)
+    _ri_qw_count = len(qw_lines)
+    _rec_health = min(100, 50 + _ri_qw_count * 10 + (20 if total_g_conflicts == 0 else 0))
+
+    # Deployment readiness
+    if prod_blocked_cnt > 0 or total_a_blocked + total_g_blocked > 0:
+        deploy_ready = "NOT READY"
+        deploy_emoji = "🔴"
+    elif prod_high_risk > 0 or knowledge_debt >= 45:
+        deploy_ready = "READY WITH RECOMMENDATIONS"
+        deploy_emoji = "🟡"
+    elif global_health >= 85 and knowledge_debt < 20:
+        deploy_ready = "READY"
+        deploy_emoji = "🟢"
+    else:
+        deploy_ready = "READY WITH RECOMMENDATIONS"
+        deploy_emoji = "🟡"
+
+    # ── Semáforo por dimensión ────────────────────────────────────────────────
+
+    def _semaforo(val, thresholds=(70, 85)):
+        if val >= thresholds[1]:  return "🟢", "Excelente"
+        if val >= thresholds[0]:  return "🟡", "Atención"
+        return "🔴", "Crítico"
+
+    s_knowledge  = _semaforo(_know_health)
+    s_guidelines = _semaforo(_guide_health)
+    s_repository = _semaforo(_repo_health)
+    s_automation = _semaforo(_resolution, (55, 75))
+    s_escalation = _semaforo(_esc_avoidable + 50, (60, 75))
+
+    # Top risks (construidos a partir de señales)
+    top_risks = []
+    if total_a_blocked > 0:
+        top_risks.append(f"⛔ {total_a_blocked} artículo(s) BLOQUEADO(s) generan loops y cierres incorrectos en FIN")
+    if total_g_blocked > 0:
+        top_risks.append(f"⛔ {total_g_blocked} guideline(s) con regla absoluta de no-escalamiento dejan casos irresolubles")
+    if total_g_conflicts > 0:
+        top_risks.append(f"⚠️  {total_g_conflicts} conflicto(s) entre guidelines producen comportamiento impredecible de FIN")
+    if total_a_dups > 0:
+        top_risks.append(f"⚠️  {total_a_dups} par(es) de artículos duplicados generan respuestas inconsistentes")
+    if missing_cats_count > 0:
+        top_risks.append(f"📌 {missing_cats_count} categoría(s) sin cobertura son puntos ciegos de FIN: {missing_cats_str[:60]}")
+    if prod_high_risk > 0 and len(top_risks) < 5:
+        top_risks.append(f"🔶 {prod_high_risk} producto(s) en riesgo ALTO concentran la mayoría de los problemas")
+    if knowledge_debt >= 45 and len(top_risks) < 5:
+        top_risks.append(f"📊 Knowledge Debt {knowledge_debt}/100 — deuda que se compone si no se atiende")
+    top_risks = top_risks[:5]
+
+    # Tabla de productos (desde product_results via re-análisis de la tabla en rr_output)
+    prod_rows = re.findall(
+        r"([\w\s]+?)\s{2,}(\d+)/100\s+[🟢🟡🔴]\w+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)",
+        rr_output
+    )
+
+    # ── Reporte ───────────────────────────────────────────────────────────────
+
+    sep  = "=" * 70
+    div1 = "─" * 70
+    div2 = "─" * 40
+
+    ctx_line = f"  Contexto: {context}" if context else ""
+
+    parts = [sep]
+    parts.append("  FIN EXECUTIVE DASHBOARD")
+    parts.append("  Estado completo del ecosistema FIN")
+    if ctx_line:
+        parts.append(ctx_line)
+    parts.append(sep)
+    parts.append("")
+
+    # RESUMEN GENERAL
+    parts += [div2, "RESUMEN GENERAL", div2, ""]
+    _hg_bar = "█" * round(global_health / 10) + "░" * (10 - round(global_health / 10))
+    parts.append(f"  Health Score Global     : [{_hg_bar}] {global_health}/100")
+    parts.append(f"  Deployment Readiness    : {deploy_emoji} {deploy_ready}")
+    parts.append(f"  Knowledge Health        : {_know_health}/100")
+    parts.append(f"  Guideline Health        : {_guide_health}/100")
+    parts.append(f"  Repository Health       : {_repo_health}/100")
+    parts.append(f"  Recommendation Health   : {_rec_health}/100")
+    parts.append("")
+
+    # SEMÁFORO EJECUTIVO
+    parts += [div2, "SEMÁFORO EJECUTIVO", div2, ""]
+    for label, (emoji, status) in [
+        ("Knowledge  ", s_knowledge),
+        ("Guidelines ", s_guidelines),
+        ("Repository ", s_repository),
+        ("Automation ", s_automation),
+        ("Escalamientos", s_escalation),
+    ]:
+        parts.append(f"  {emoji} {label:<15} {status}")
+    parts.append("")
+
+    # MÉTRICAS PRINCIPALES
+    parts += [div1, "MÉTRICAS PRINCIPALES", div1, ""]
+    _debt_emoji = "🔴" if knowledge_debt >= 70 else ("🟠" if knowledge_debt >= 45 else ("🟡" if knowledge_debt >= 20 else "🟢"))
+    _lr_emoji   = "🔴" if loop_risk_level == "CRÍTICO" else ("🟠" if loop_risk_level == "ALTO" else ("🟡" if loop_risk_level == "MEDIO" else "🟢"))
+    parts.append(f"  Health Score              : {global_health}/100")
+    parts.append(f"  Knowledge Debt            : {_debt_emoji} {knowledge_debt}/100")
+    parts.append(f"  Cobertura temática        : {coverage_pct}%  ({missing_cats_count} categorías sin cubrir)")
+    parts.append(f"  Conflictos (guidelines)   : {total_g_conflicts}")
+    parts.append(f"  Duplicados (artículos)    : {total_a_dups} par(es)")
+    parts.append(f"  Loop Risk global          : {_lr_emoji} {loop_risk_level}")
+    parts.append(f"  Escalamientos evitables   : ~{_esc_avoidable}% del total")
+    parts.append(f"  Resolución autónoma esp.  : ~{_resolution}%")
+    parts.append("")
+
+    # PRODUCTOS
+    parts += [div1, "PRODUCTOS", div1, ""]
+    _ph = f"  {'Producto':<22} {'Health':>7} {'Ready':>7} {'Know.':>6} {'Guide.':>7} {'Conflictos':>11} {'Cobertura':>10}"
+    parts.append(_ph)
+    parts.append("  " + "─" * 68)
+
+    # Intentar parsear filas de la tabla rr; si falla, usar datos de products
+    if prod_rows:
+        for row in prod_rows:
+            pname, health, g_count, g_bloq, a_count, a_bloq, dups = row
+            _r_emoji = "🟢" if int(health) >= 85 else ("🟡" if int(health) >= 70 else "🔴")
+            _ready = "✅" if int(a_bloq) == 0 and int(g_bloq) == 0 else "⛔"
+            parts.append(
+                f"  {pname.strip():<22} {int(health):>5}/100 {_ready:>7} {int(a_count):>6} {int(g_count):>7} {int(g_bloq):>11} {'—':>10}"
+            )
+    else:
+        # Fallback: tabla derivada de los inputs
+        for prod in products:
+            pname = prod.get("nombre", "—")
+            a_cnt = len(prod.get("knowledge_articles", []))
+            g_cnt = len(prod.get("guidelines", []))
+            parts.append(f"  {pname:<22} {'—':>7} {'—':>7} {a_cnt:>6} {g_cnt:>7} {'—':>11} {'—':>10}")
+    parts.append("")
+
+    # TOP RIESGOS
+    parts += [div1, "TOP RIESGOS", div1, ""]
+    if top_risks:
+        for i, r in enumerate(top_risks, 1):
+            parts.append(f"  {i}. {r}")
+    else:
+        parts.append("  ✅ No se identificaron riesgos críticos. El repositorio está en buen estado.")
+    parts.append("")
+
+    # TOP OPORTUNIDADES
+    parts += [div1, "TOP OPORTUNIDADES", div1, ""]
+    if top_opps:
+        for opp in top_opps:
+            parts.append(f"  #{opp['num']} {opp['nombre']}  (ROI {opp['roi']})")
+            parts.append(f"       {opp['desc']}")
+            parts.append("")
+    else:
+        # Fallback desde sección TOP RECOMENDACIONES del texto
+        _raw_recs = re.findall(r"#\d+\s+.+", ri_output)
+        for line in _raw_recs[:5]:
+            parts.append(f"  {line.strip()}")
+        parts.append("")
+
+    # QUICK WINS
+    parts += [div1, "QUICK WINS  (Alto impacto · Bajo esfuerzo)", div1, ""]
+    if qw_lines:
+        for qw in qw_lines:
+            parts.append(f"  ⚡ {qw}")
+        parts.append("")
+    else:
+        parts.append("  Sin quick wins identificados con los datos actuales.")
+        parts.append("")
+
+    # ROADMAP
+    parts += [div1, "ROADMAP", div1, ""]
+    parts.append("  📅 Esta semana")
+    for item in (roadmap_week_lines or ["Revisar bloqueos y conflictos con repository_review"]):
+        parts.append(f"     → {item}")
+    parts.append("")
+    parts.append("  ⚡ Próximo Sprint")
+    for item in (roadmap_sprint_lines or ["Aplicar correcciones priorizadas por ROI"]):
+        parts.append(f"     → {item}")
+    parts.append("")
+    parts.append("  📋 Próximo Mes")
+    for item in (roadmap_month_lines or ["Ampliar cobertura y establecer revisión periódica"]):
+        parts.append(f"     → {item}")
+    parts.append("")
+
+    # SIMULACIÓN
+    parts += [div1, "SIMULACIÓN — Si implementas el Roadmap", div1, ""]
+    parts.append(f"  Health esperado           : {global_health}/100 → {sim5_health}/100  (+{sim5_health - global_health} pts)")
+    parts.append(f"  Knowledge Debt esperado   : {knowledge_debt}/100 → {sim5_debt}/100  (-{knowledge_debt - sim5_debt} pts)")
+    parts.append(f"  Resolución autónoma esp.  : {_resolution}% → ~{min(95, _resolution + sim5_res)}%  (+{sim5_res} pp)")
+    parts.append(f"  Reducción escalamientos   : ↓ ~{sim5_esc}%")
+    parts.append(f"  Cobertura esperada        : {coverage_pct}% → {sim5_cov}%")
+    parts.append("")
+
+    # DECISIÓN EJECUTIVA
+    parts += [div2, "DECISIÓN EJECUTIVA", div2, ""]
+    parts.append(f"  {deploy_emoji} {deploy_ready}")
+    parts.append("")
+
+    if deploy_ready == "BLOCKED" or (prod_blocked_cnt > 0 or total_a_blocked + total_g_blocked > 0):
+        _why = (
+            f"El repositorio tiene {total_a_blocked} artículo(s) y {total_g_blocked} guideline(s) "
+            f"BLOQUEADO(s). FIN generaría loops instruccionales o cierres incorrectos en producción. "
+            f"Corregir los bloqueos es condición necesaria antes de cualquier despliegue."
+        )
+    elif deploy_ready == "READY WITH RECOMMENDATIONS":
+        _issues = []
+        if prod_high_risk > 0:
+            _issues.append(f"{prod_high_risk} producto(s) en riesgo ALTO")
+        if total_g_conflicts > 0:
+            _issues.append(f"{total_g_conflicts} conflicto(s) entre guidelines")
+        if knowledge_debt >= 45:
+            _issues.append(f"Knowledge Debt {knowledge_debt}/100")
+        _why = (
+            f"FIN puede operar pero presenta: {', '.join(_issues)}. "
+            f"Se recomienda atender las oportunidades identificadas antes de ampliar el alcance. "
+            f"Monitorear de cerca durante las primeras semanas de operación."
+        )
+    else:
+        _why = (
+            f"El repositorio supera los umbrales mínimos: Health {global_health}/100, "
+            f"Knowledge Debt {knowledge_debt}/100, cobertura {coverage_pct}%. "
+            f"FIN está listo para operar. Mantener el ciclo de revisión periódica."
+        )
+
+    parts.append(f"  {_why}")
+    parts.append("")
+    parts.append(sep)
+
+    return "\n".join(parts)
+
+
+@mcp.tool()
 async def score_guideline(
     guideline: str,
     product: str = "general",
