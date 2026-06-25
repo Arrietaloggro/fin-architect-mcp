@@ -510,6 +510,7 @@ def kde_score_article(text: str) -> dict:
         "deploy":              deploy_decision,
         "words_set":           word_set(text),
         "text_lower":          text.lower(),
+        "problems":            res_factors,
         # Proporciones para resolución
         "_rc_clarity":         _rc_clarity,
         "_rc_steps":           _rc_steps,
