@@ -2654,9 +2654,7 @@ async def architect_review(
     de impacto y resúmenes ejecutivos diferenciados para PM y equipo de Soporte.
     """
 
-    # ------------------------------------------------------------------ #
-    # Helpers                                                              #
-    # ------------------------------------------------------------------ #
+    # ---
     import re as _re
 
     def extract_score(score_output):
@@ -2671,9 +2669,7 @@ async def architect_review(
             return 0.0
         return len(wa & wb) / len(wa | wb)
 
-    # ------------------------------------------------------------------ #
-    # PASO 1 — Extraer patrones                                            #
-    # ------------------------------------------------------------------ #
+    # PASO 1 — Extraer patrones
     extraction_output = await extract_guidelines(
         conversations=conversations,
         product=product,
@@ -2692,7 +2688,6 @@ async def architect_review(
         if in_patterns:
             patterns_block.append(line)
 
-    # Extraer eventos globales detectados
     events_detected = []
     in_events = False
     for line in lines_ext:
@@ -2704,7 +2699,6 @@ async def architect_review(
         if in_events and line.strip().startswith("✓"):
             events_detected.append(line.strip())
 
-    # Extraer nombres y guidelines de patrones
     extracted_guidelines = []
     current_name = None
     for line in patterns_block:
@@ -2731,9 +2725,7 @@ async def architect_review(
     seen_g = set()
     extracted_guidelines = [g for g in extracted_guidelines if not (g in seen_g or seen_g.add(g))]
 
-    # ------------------------------------------------------------------ #
-    # PASO 2 — Generar guidelines desde conversaciones                     #
-    # ------------------------------------------------------------------ #
+    # PASO 2 — Generar guidelines desde conversaciones
     generated_guidelines = []
     for conv in conversations[:5]:
         raw = conv.get("text", conv) if isinstance(conv, dict) else conv
@@ -2753,7 +2745,6 @@ async def architect_review(
                 generated_guidelines.append(line.strip())
                 break
 
-    # Combinar sin duplicados exactos
     all_guidelines = list(current_guidelines)
     for g in extracted_guidelines + generated_guidelines:
         if g and g not in all_guidelines:
@@ -2766,14 +2757,11 @@ async def architect_review(
             "verifica el contexto antes de escalar al agente humano."
         ]
 
-    # ------------------------------------------------------------------ #
-    # MEJORA 6 — Consolidar guidelines con similitud ≥ 90%                #
-    # Antes de ejecutar el pipeline, fusionar duplicados semánticos.      #
-    # ------------------------------------------------------------------ #
+    # MEJORA 6 — Consolidar guidelines con similitud >= 90%
     CONSOLIDATION_THRESHOLD = 0.90
 
-    consolidated = []     # lista final deduplicada
-    merge_log = []        # [(original_a, original_b, consolidated)]
+    consolidated = []
+    merge_log = []
     used_idx = set()
 
     for i, gi in enumerate(all_guidelines):
@@ -2790,7 +2778,6 @@ async def architect_review(
         if len(group) == 1:
             consolidated.append(gi)
         else:
-            # La guideline más larga como representante (más completa)
             representative = max(group, key=len)
             consolidated.append(representative)
             for other in group:
@@ -2799,9 +2786,7 @@ async def architect_review(
 
     all_guidelines = consolidated
 
-    # ------------------------------------------------------------------ #
-    # PASO 3 — Auditoría                                                   #
-    # ------------------------------------------------------------------ #
+    # PASO 3 — Auditoría
     audit_results = []
     for g in all_guidelines:
         audit_out = await audit_guideline(guideline=g, product=product)
@@ -2818,9 +2803,7 @@ async def architect_review(
     guidelines_with_issues = [a for a in audit_results if a["has_issues"]]
     guidelines_clean       = [a for a in audit_results if not a["has_issues"]]
 
-    # ------------------------------------------------------------------ #
-    # PASO 4 — Optimización de las que tienen problemas                    #
-    # ------------------------------------------------------------------ #
+    # PASO 4 — Optimización
     optimized_map = {}
     for a in guidelines_with_issues:
         opt_out = await optimize_guideline(guideline=a["guideline"])
@@ -2834,9 +2817,7 @@ async def architect_review(
 
     final_guidelines = [optimized_map.get(g, g) for g in all_guidelines if g]
 
-    # ------------------------------------------------------------------ #
-    # PASO 5 — Clasificación                                               #
-    # ------------------------------------------------------------------ #
+    # PASO 5 — Clasificación
     classification_results = []
     for g in final_guidelines:
         cls_out = await classify_guideline(guideline=g, product=product)
@@ -2851,25 +2832,21 @@ async def architect_review(
             elif "Prioridad:" in line:
                 pri_cls = line.split(":", 1)[-1].strip().replace("**", "")
         classification_results.append({
-            "guideline": g,
+            "guideline":   g,
             "category":    cat,
             "subcategory": sub,
             "risk":        risk_cls,
             "priority":    pri_cls,
         })
 
-    # ------------------------------------------------------------------ #
-    # PASO 6 — Conflictos                                                  #
-    # ------------------------------------------------------------------ #
+    # PASO 6 — Conflictos
     conflicts_output = await detect_conflicts(guidelines=final_guidelines, product=product)
     has_conflicts = "No se detectaron conflictos" not in conflicts_output \
                     and "sin conflictos" not in conflicts_output.lower()
     conflict_lines = [l.strip() for l in conflicts_output.split("\n")
                       if l.strip().startswith("- ") or l.strip().startswith("⚠")][:10]
 
-    # ------------------------------------------------------------------ #
-    # PASO 7 — Puntaje                                                     #
-    # ------------------------------------------------------------------ #
+    # PASO 7 — Puntaje
     score_results = []
     for g in final_guidelines:
         sc_out = await score_guideline(guideline=g, product=product)
@@ -2881,12 +2858,12 @@ async def architect_review(
                 break
         score_results.append({"guideline": g, "score": score_val, "interpretation": interpretation})
 
-    scores   = [r["score"] for r in score_results if r["score"] > 0]
+    scores    = [r["score"] for r in score_results if r["score"] > 0]
     avg_score = round(sum(scores) / len(scores)) if scores else 0
     max_score = max(scores) if scores else 0
     min_score = min(scores) if scores else 0
 
-    issue_penalty   = len(guidelines_with_issues) * 5
+    issue_penalty    = len(guidelines_with_issues) * 5
     conflict_penalty = 10 if has_conflicts else 0
     health_score = max(0, min(100, avg_score - issue_penalty - conflict_penalty))
 
@@ -2899,9 +2876,7 @@ async def architect_review(
     else:
         health_label, health_emoji = "CRÍTICA", "🔴"
 
-    # ------------------------------------------------------------------ #
-    # PASO 8 — Simulación final                                            #
-    # ------------------------------------------------------------------ #
+    # PASO 8 — Simulación final
     rep_conv_raw = conversations[0]
     if isinstance(rep_conv_raw, dict):
         rep_conv_raw = rep_conv_raw.get("text", str(rep_conv_raw))
@@ -2912,7 +2887,6 @@ async def architect_review(
         context=objective,
     )
 
-    # Extraer valores clave de la simulación
     sim_values = {}
     sim_sections_map = {
         "INTENCIÓN DETECTADA": "intention",
@@ -2931,36 +2905,29 @@ async def architect_review(
         if sim_current and line.strip() and sim_current not in sim_values:
             sim_values[sim_current] = line.strip()
 
-    # ------------------------------------------------------------------ #
-    # MEJORA 4 — Madurez del producto (métricas derivadas del análisis)   #
-    # ------------------------------------------------------------------ #
-    total_gl = len(final_guidelines)
+    # MEJORA 4 — Madurez del producto
+    total_gl      = len(final_guidelines)
     n_high_risk   = sum(1 for c in classification_results if c["risk"] == "ALTO")
     n_conditional = sum(1 for c in classification_results if c["subcategory"] == "Flujo Condicional")
     n_urgente     = sum(1 for c in classification_results if c["priority"] == "URGENTE")
     n_clean       = len(guidelines_clean)
     n_issues      = len(guidelines_with_issues)
 
-    # Madurez de guidelines: basada en score promedio y limpieza de auditoría
     mat_guidelines = max(0, min(100,
         round(avg_score * 0.7 + (n_clean / total_gl * 100 * 0.3) if total_gl else avg_score)
     ))
 
-    # Madurez de escalamientos: penaliza guidelines sin condición (riesgo alto)
-    esc_penalty = round((n_high_risk / total_gl) * 40) if total_gl else 0
+    esc_penalty    = round((n_high_risk / total_gl) * 40) if total_gl else 0
     mat_escalation = max(0, min(100, 85 - esc_penalty + (5 if not has_conflicts else 0)))
 
-    # Madurez de resolución autónoma: % de guidelines que definen flujo condicional
     mat_autonomous = max(0, min(100,
         round((n_conditional / total_gl) * 100) if total_gl else 50
     ))
 
-    # Madurez de consistencia: penaliza conflictos y duplicados fusionados
     merge_penalty   = min(len(merge_log) * 8, 30)
     conflict_p      = 20 if has_conflicts else 0
     mat_consistency = max(0, min(100, 100 - merge_penalty - conflict_p))
 
-    # Madurez global: promedio ponderado
     mat_global = round(
         mat_guidelines   * 0.30 +
         mat_escalation   * 0.25 +
@@ -2974,51 +2941,38 @@ async def architect_review(
         if v >= 40: return "En desarrollo"
         return "Inicial"
 
-    # ------------------------------------------------------------------ #
-    # MEJORA 1 — Hallazgos principales (síntesis única, sin repetición)   #
-    # ------------------------------------------------------------------ #
+    # MEJORA 1 — Hallazgos principales
     findings = []
     total_convs = len(conversations)
 
-    # Hallazgo: patrón dominante de comportamiento de FIN
     if any("FIN repite" in l or "FIN repitió" in l for l in events_detected):
         findings.append(
-            f"✓ FIN repite soluciones ya agotadas en al menos una parte de las conversaciones analizadas, "
-            f"generando escalamientos evitables."
+            "✓ FIN repite soluciones ya agotadas en al menos una parte de las conversaciones analizadas, "
+            "generando escalamientos evitables."
         )
-
-    # Hallazgo: urgencias sin cobertura
     if any("urgencia" in l.lower() for l in events_detected):
         findings.append(
             "✓ Se detectaron conversaciones con urgencia explícita del usuario. "
             "El conjunto actual de guidelines no garantiza priorización inmediata."
         )
-
-    # Hallazgo: bloqueo operativo
     if any("bloqueado" in l.lower() or "bloqueo" in l.lower() for l in events_detected):
         findings.append(
             "✓ Usuarios reportan bloqueo operativo sin que FIN ofrezca una ruta de escalamiento condicional clara."
         )
-
-    # Hallazgo: guidelines redundantes / fusionadas
     if merge_log:
         findings.append(
             f"✓ Se identificaron {len(merge_log)} guideline(s) redundante(s) con similitud ≥ 90%. "
-            f"Fueron consolidadas automáticamente en este reporte."
+            "Fueron consolidadas automáticamente en este reporte."
         )
-
-    # Hallazgo: conflictos entre guidelines
     if has_conflicts:
         findings.append(
             "✓ Existen conflictos semánticos entre guidelines que pueden generar comportamientos "
             "contradictorios en FIN si se despliegan sin resolución previa."
         )
-
-    # Hallazgo: calidad técnica
     if avg_score >= 85:
         findings.append(
             f"✓ Las guidelines presentan buena calidad técnica (score promedio {avg_score}/100), "
-            f"lo que reduce el riesgo de interpretaciones incorrectas por parte de FIN."
+            "lo que reduce el riesgo de interpretaciones incorrectas por parte de FIN."
         )
     elif avg_score >= 70:
         findings.append(
@@ -3030,8 +2984,6 @@ async def architect_review(
             f"✓ La calidad técnica de las guidelines está por debajo del umbral recomendado "
             f"(score promedio {avg_score}/100). Se recomienda optimización antes del despliegue."
         )
-
-    # Hallazgo: madurez de consistencia
     if mat_consistency >= 80:
         findings.append(
             "✓ El conjunto de guidelines es consistente internamente. "
@@ -3042,36 +2994,28 @@ async def architect_review(
             "✓ La consistencia del conjunto de guidelines es baja. "
             "Fusionar y depurar antes del despliegue es la acción de mayor impacto."
         )
-
-    # Hallazgo: cobertura de escalamiento condicional
     if n_conditional < total_gl // 2 and total_gl > 1:
         findings.append(
             "✓ Menos de la mitad de las guidelines define criterios condicionales de escalamiento. "
             "FIN podría escalar casos que podría resolver de forma autónoma."
         )
 
-    # Limitar a entre 5 y 8 hallazgos únicos
     findings = findings[:8]
     while len(findings) < 5:
         findings.append(
             "✓ Se recomienda ampliar el conjunto de conversaciones para detectar patrones adicionales."
         )
 
-    # ------------------------------------------------------------------ #
-    # MEJORA 2 — Resumen ejecutivo de consultoría (lenguaje natural)      #
-    # ------------------------------------------------------------------ #
-    # Qué está ocurriendo
+    # MEJORA 2 — Resumen ejecutivo de consultoría
     what_happening = (
         f"El producto {product} presenta un patrón recurrente en el que FIN no logra resolver "
-        f"los casos de forma autónoma y termina repitiendo soluciones documentadas que el usuario "
-        f"ya intentó, lo que deriva en escalamientos innecesarios."
+        "los casos de forma autónoma y termina repitiendo soluciones documentadas que el usuario "
+        "ya intentó, lo que deriva en escalamientos innecesarios."
         if any("repite" in f or "repitió" in f for f in findings)
         else
         f"El análisis del producto {product} revela oportunidades de mejora en la cobertura "
-        f"y precisión de las guidelines que gobiernan el comportamiento de FIN."
+        "y precisión de las guidelines que gobiernan el comportamiento de FIN."
     )
-
-    # Por qué ocurre
     why = (
         "Esto ocurre principalmente porque las guidelines actuales no contemplan el estado "
         "previo del usuario: FIN no verifica si el cliente ya intentó la solución antes de "
@@ -3083,16 +3027,12 @@ async def architect_review(
         "lo que deja a FIN sin criterios objetivos para decidir cuándo resolver de forma "
         "autónoma y cuándo escalar."
     )
-
-    # Qué impacto tiene
     impact_desc = (
         f"El impacto operativo es directo: cada escalamiento evitable incrementa la carga del "
         f"equipo de soporte humano, prolonga el tiempo de resolución del usuario y deteriora "
         f"la percepción del servicio. "
         f"{'Con conflictos no resueltos entre guidelines, el riesgo de comportamiento inconsistente de FIN es alto.' if has_conflicts else 'La calidad técnica de las guidelines es suficiente para sostener el despliegue con los ajustes recomendados.'}"
     )
-
-    # Qué acciones recomienda
     if merge_log and has_conflicts:
         action_summary = (
             "Se recomienda priorizar la consolidación del conjunto de guidelines, "
@@ -3117,13 +3057,9 @@ async def architect_review(
             "y programar una revisión periódica con architect_review."
         )
 
-    executive_summary = (
-        f"{what_happening} {why} {impact_desc} {action_summary}"
-    )
+    executive_summary = f"{what_happening} {why} {impact_desc} {action_summary}"
 
-    # ------------------------------------------------------------------ #
-    # Riesgos                                                              #
-    # ------------------------------------------------------------------ #
+    # Riesgos
     risks = []
     if any(r["risk"] == "ALTO" for r in classification_results):
         risks.append("Guidelines con riesgo ALTO detectadas. Deben revisarse antes del despliegue.")
@@ -3138,16 +3074,10 @@ async def architect_review(
     if not risks:
         risks.append("No se identificaron riesgos críticos. El conjunto de guidelines es estable.")
 
-    # ------------------------------------------------------------------ #
-    # Prioridad de implementación                                          #
-    # ------------------------------------------------------------------ #
     urgent = [c for c in classification_results if c["priority"] == "URGENTE"]
     high   = [c for c in classification_results if c["priority"] == "ALTA"]
     normal = [c for c in classification_results if c["priority"] not in ("URGENTE", "ALTA")]
 
-    # ------------------------------------------------------------------ #
-    # Recomendaciones finales                                              #
-    # ------------------------------------------------------------------ #
     recommendations = []
     if merge_log:
         recommendations.append(
@@ -3176,66 +3106,32 @@ async def architect_review(
         "Ejecutar audit_guideline periódicamente para detectar degradación en la calidad del conjunto."
     )
 
-    # ------------------------------------------------------------------ #
-    # MEJORA 3 — Plan de acción priorizado                                 #
-    # ------------------------------------------------------------------ #
+    # MEJORA 3 — Plan de acción priorizado
     action_plan = []
-
     if merge_log:
-        action_plan.append({
-            "action":   "Adoptar guidelines consolidadas (fusión de duplicados)",
-            "impact":   "Alto",
-            "effort":   "Bajo",
-            "priority": "CRÍTICA",
-        })
+        action_plan.append({"action": "Adoptar guidelines consolidadas (fusión de duplicados)",
+                            "impact": "Alto", "effort": "Bajo", "priority": "CRÍTICA"})
     if has_conflicts:
-        action_plan.append({
-            "action":   "Resolver conflictos semánticos entre guidelines",
-            "impact":   "Alto",
-            "effort":   "Medio",
-            "priority": "CRÍTICA",
-        })
+        action_plan.append({"action": "Resolver conflictos semánticos entre guidelines",
+                            "impact": "Alto", "effort": "Medio", "priority": "CRÍTICA"})
     if guidelines_with_issues:
-        action_plan.append({
-            "action":   "Reemplazar guidelines con problemas de auditoría por versiones optimizadas",
-            "impact":   "Alto",
-            "effort":   "Bajo",
-            "priority": "ALTA",
-        })
+        action_plan.append({"action": "Reemplazar guidelines con problemas de auditoría por versiones optimizadas",
+                            "impact": "Alto", "effort": "Bajo", "priority": "ALTA"})
     if n_conditional < total_gl // 2 and total_gl > 1:
-        action_plan.append({
-            "action":   "Agregar condiciones explícitas a guidelines sin criterios de escalamiento",
-            "impact":   "Alto",
-            "effort":   "Medio",
-            "priority": "ALTA",
-        })
-    action_plan.append({
-        "action":   "Validar guidelines con simulate_fin usando más conversaciones representativas",
-        "impact":   "Medio",
-        "effort":   "Bajo",
-        "priority": "MEDIA",
-    })
-    action_plan.append({
-        "action":   "Programar revisión periódica con architect_review al incorporar nuevas guidelines",
-        "impact":   "Medio",
-        "effort":   "Bajo",
-        "priority": "MEDIA",
-    })
+        action_plan.append({"action": "Agregar condiciones explícitas a guidelines sin criterios de escalamiento",
+                            "impact": "Alto", "effort": "Medio", "priority": "ALTA"})
+    action_plan.append({"action": "Validar guidelines con simulate_fin usando más conversaciones representativas",
+                        "impact": "Medio", "effort": "Bajo", "priority": "MEDIA"})
+    action_plan.append({"action": "Programar revisión periódica con architect_review al incorporar nuevas guidelines",
+                        "impact": "Medio", "effort": "Bajo", "priority": "MEDIA"})
     if avg_score < 85:
-        action_plan.append({
-            "action":   "Optimizar guidelines con score < 85 para alcanzar estándar de producción",
-            "impact":   "Medio",
-            "effort":   "Medio",
-            "priority": "NORMAL",
-        })
+        action_plan.append({"action": "Optimizar guidelines con score < 85 para alcanzar estándar de producción",
+                            "impact": "Medio", "effort": "Medio", "priority": "NORMAL"})
 
-    # Ordenar: CRÍTICA → ALTA → MEDIA → NORMAL
     priority_order_map = {"CRÍTICA": 0, "ALTA": 1, "MEDIA": 2, "NORMAL": 3}
     action_plan.sort(key=lambda x: priority_order_map.get(x["priority"], 9))
 
-    # ------------------------------------------------------------------ #
-    # Próximos pasos                                                       #
-    # ------------------------------------------------------------------ #
+    # Próximos pasos
     next_steps = []
     if urgent:
         next_steps.append(f"Revisar {len(urgent)} guideline(s) de prioridad URGENTE antes de cualquier otro paso.")
@@ -3248,27 +3144,23 @@ async def architect_review(
     next_steps.append("Ejecutar simulate_fin con más conversaciones para validar el comportamiento esperado.")
     next_steps.append("Programar una revisión arquitectónica periódica con architect_review.")
 
-    # ------------------------------------------------------------------ #
-    # MEJORA 5 — Conclusión del Arquitecto (diagnóstico al Product Manager)
-    # ------------------------------------------------------------------ #
-    # Estado actual
+    # MEJORA 5 — Conclusión del Arquitecto
     if health_score >= 80:
         estado = (
             f"El producto {product} se encuentra en un estado arquitectónico saludable. "
-            f"Las guidelines propuestas son técnicamente sólidas y cubren los escenarios dominantes detectados."
+            "Las guidelines propuestas son técnicamente sólidas y cubren los escenarios dominantes detectados."
         )
     elif health_score >= 60:
         estado = (
             f"El producto {product} tiene una base funcional pero presenta brechas en la cobertura "
-            f"de ciertos escenarios y en la consistencia entre guidelines."
+            "de ciertos escenarios y en la consistencia entre guidelines."
         )
     else:
         estado = (
             f"El producto {product} requiere intervención arquitectónica antes del despliegue. "
-            f"El conjunto de guidelines actual presenta riesgos operativos que impactan directamente la experiencia del usuario."
+            "El conjunto de guidelines actual presenta riesgos operativos que impactan directamente la experiencia del usuario."
         )
 
-    # Principal riesgo
     if has_conflicts:
         principal_risk = (
             "El principal riesgo es el despliegue de guidelines conflictivas: FIN podría recibir "
@@ -3291,7 +3183,6 @@ async def architect_review(
             "lo que deja a FIN sin instrucciones claras en casos límite."
         )
 
-    # Mayor oportunidad
     if n_conditional >= total_gl * 0.7:
         oportunidad = (
             "La mayor oportunidad está en ampliar el corpus de conversaciones para descubrir "
@@ -3304,7 +3195,6 @@ async def architect_review(
             "y mejoraría la tasa de resolución autónoma de FIN de forma inmediata."
         )
 
-    # Recomendación inmediata
     if merge_log and has_conflicts:
         immediate_rec = (
             "Consolidar los duplicados e implementar las versiones fusionadas en este reporte. "
@@ -3326,7 +3216,6 @@ async def architect_review(
             "adicionales y proceder al despliegue de las guidelines aprobadas."
         )
 
-    # Siguiente revisión recomendada
     if health_score >= 80 and not has_conflicts:
         next_review = (
             "Se recomienda ejecutar una nueva revisión con architect_review en un plazo de "
@@ -3338,15 +3227,11 @@ async def architect_review(
             "después de aplicar los cambios indicados en el plan de acción, y antes de cualquier despliegue."
         )
 
-    # ================================================================== #
-    # ARCHITECT DECISION ENGINE                                          #
-    # Interpreta el pipeline completo y toma decisiones arquitectónicas #
-    # ================================================================== #
+    # ARCHITECT DECISION ENGINE
     DECISION_PROD_THRESHOLD  = 90
     DECISION_ELIM_THRESHOLD  = 70
     DECISION_MERGE_THRESHOLD = 0.85
 
-    # --- Detectar guidelines involucradas en conflictos ---
     conflicting_guidelines = set()
     for line in conflict_lines:
         refs = _re.findall(r'[Gg]uideline\s+(\d+)', line)
@@ -3355,7 +3240,6 @@ async def architect_review(
             if 0 <= idx_c < len(final_guidelines):
                 conflicting_guidelines.add(final_guidelines[idx_c])
 
-    # --- Detectar guidelines con términos absolutos sin condición ---
     absolute_markers = ["siempre ", "nunca ", "todos ", "ninguno "]
     gl_absolute_set = set()
     for g in final_guidelines:
@@ -3365,7 +3249,6 @@ async def architect_review(
             if sc_abs.get("score", 100) < 85:
                 gl_absolute_set.add(g)
 
-    # --- Detectar pares FUSIONAR (85% ≤ sim < 90%) ---
     merge_pairs_engine = []
     used_engine_merge  = set()
     for i_e, gi_e in enumerate(final_guidelines):
@@ -3389,21 +3272,19 @@ async def architect_review(
         {p["original_b"] for p in merge_pairs_engine}
     )
 
-    # --- Clasificar cada guideline ---
-    gl_prod_ready  = []
-    gl_to_modify   = []
+    gl_prod_ready   = []
+    gl_to_modify    = []
     gl_to_eliminate = []
 
     for g_d in final_guidelines:
-        sc_d    = next((s for s in score_results  if s["guideline"] == g_d), {})
-        aud_d   = next((a for a in audit_results  if a["guideline"] == g_d), {})
+        sc_d    = next((s for s in score_results if s["guideline"] == g_d), {})
+        aud_d   = next((a for a in audit_results if a["guideline"] == g_d), {})
         score_d = sc_d.get("score", 0)
         has_d   = aud_d.get("has_issues", False)
 
         if g_d in merged_in_engine:
-            continue  # manejada en FUSIONAR
+            continue
 
-        # ELIMINAR
         if score_d < DECISION_ELIM_THRESHOLD:
             gl_to_eliminate.append({
                 "guideline": g_d, "score": score_d,
@@ -3425,14 +3306,12 @@ async def architect_review(
             })
             continue
 
-        # LISTAS PARA PRODUCCIÓN
         if (score_d >= DECISION_PROD_THRESHOLD
                 and not has_d
                 and g_d not in conflicting_guidelines):
             gl_prod_ready.append({"guideline": g_d, "score": score_d})
             continue
 
-        # MODIFICAR
         mod_reasons = []
         mod_actions = []
         if score_d < DECISION_PROD_THRESHOLD:
@@ -3460,13 +3339,13 @@ async def architect_review(
             "impact":    "Alto" if g_d in conflicting_guidelines or score_d < 80 else "Medio",
         })
 
-    # --- DECISIÓN DE DESPLIEGUE ---
-    n_prod_ready_d  = len(gl_prod_ready)
-    n_modify_d      = len(gl_to_modify)
-    n_eliminate_d   = len(gl_to_eliminate)
-    n_merge_engine  = len(merge_pairs_engine)
-    total_final_d   = len(final_guidelines)
-    total_approved  = n_prod_ready_d + n_merge_engine
+    # DECISIÓN DE DESPLIEGUE
+    n_prod_ready_d = len(gl_prod_ready)
+    n_modify_d     = len(gl_to_modify)
+    n_eliminate_d  = len(gl_to_eliminate)
+    n_merge_engine = len(merge_pairs_engine)
+    total_final_d  = len(final_guidelines)
+    total_approved = n_prod_ready_d + n_merge_engine
 
     prod_ratio = (n_prod_ready_d / total_final_d) if total_final_d else 0
 
@@ -3479,7 +3358,7 @@ async def architect_review(
         deploy_just   = (
             f"El {round(prod_ratio * 100)}% de las guidelines supera el umbral de producción "
             f"({DECISION_PROD_THRESHOLD}/100). No se detectaron conflictos ni guidelines que "
-            f"requieran eliminación. El conjunto está listo para despliegue inmediato."
+            "requieran eliminación. El conjunto está listo para despliegue inmediato."
         )
     elif (health_score >= 60
           or (n_prod_ready_d >= total_final_d * 0.5 and not has_conflicts)):
@@ -3495,8 +3374,8 @@ async def architect_review(
         deploy_just = (
             f"El conjunto puede avanzar a producción con las correcciones indicadas: "
             f"{', '.join(issues_s) if issues_s else 'ajustes menores recomendados'}. "
-            f"Desplegar únicamente las guidelines clasificadas como LISTAS PARA PRODUCCIÓN. "
-            f"No publicar las clasificadas como MODIFICAR o ELIMINAR sin revisión previa."
+            "Desplegar únicamente las guidelines clasificadas como LISTAS PARA PRODUCCIÓN. "
+            "No publicar las clasificadas como MODIFICAR o ELIMINAR sin revisión previa."
         )
     else:
         deploy_status = "🔴 NOT READY"
@@ -3511,10 +3390,10 @@ async def architect_review(
         deploy_just = (
             f"El conjunto NO está listo para producción. Bloqueadores: "
             f"{', '.join(blockers) if blockers else 'múltiples problemas críticos'}. "
-            f"Resolver todos los bloqueadores y ejecutar una nueva revisión antes del despliegue."
+            "Resolver todos los bloqueadores y ejecutar una nueva revisión antes del despliegue."
         )
 
-    # --- IMPACTO ESTIMADO ---
+    # IMPACTO ESTIMADO
     n_conflicts_count = len(conflict_lines)
     n_absolute_elim   = sum(
         1 for el in gl_to_eliminate
@@ -3522,12 +3401,12 @@ async def architect_review(
         or "siempre" in el.get("reason", "").lower()
     )
 
-    esc_base = min(n_conflicts_count * 8 + n_absolute_elim * 10 + n_merge_engine * 5, 60)
+    esc_base          = min(n_conflicts_count * 8 + n_absolute_elim * 10 + n_merge_engine * 5, 60)
     esc_reduction_str = f"~{esc_base}–{min(esc_base + 10, 70)}%"
 
-    cond_ratio_d   = n_conditional / total_final_d if total_final_d else 0
-    auto_base      = round(cond_ratio_d * 40) + (5 if prod_ratio >= 0.6 else 0)
-    auto_str       = f"~{auto_base}–{auto_base + 10}%"
+    cond_ratio_d = n_conditional / total_final_d if total_final_d else 0
+    auto_base    = round(cond_ratio_d * 40) + (5 if prod_ratio >= 0.6 else 0)
+    auto_str     = f"~{auto_base}–{auto_base + 10}%"
 
     time_base = max(0, min(round((avg_score - 70) / 3) + n_merge_engine * 3, 35)) if avg_score > 70 else 0
     time_str  = f"~{time_base}–{min(time_base + 8, 40)}%"
@@ -3538,66 +3417,57 @@ async def architect_review(
     cons_base = min(n_merge_engine * 12 + (15 if has_conflicts else 0) + n_absolute_elim * 8, 50)
     cons_str  = f"~{cons_base}–{min(cons_base + 10, 60)}%"
 
-    # --- ROADMAP ---
+    # ROADMAP
     roadmap = []
 
     phase1_tasks = []
     if gl_to_eliminate:
         phase1_tasks.append(
             f"Eliminar {len(gl_to_eliminate)} guideline(s) clasificada(s) para eliminación "
-            f"(ver sección DECISIONES ARQUITECTÓNICAS → ELIMINAR)."
+            "(ver sección DECISIONES ARQUITECTÓNICAS → ELIMINAR)."
         )
     if has_conflicts:
         phase1_tasks.append("Resolver conflictos semánticos identificados entre guidelines.")
     if not phase1_tasks:
         phase1_tasks.append("Verificar que no queden guidelines obsoletas en el repositorio.")
-    roadmap.append({
-        "phase":    "Fase 1 — Depuración y Estabilización",
-        "obj":      "Eliminar riesgos críticos antes del despliegue.",
-        "tasks":    phase1_tasks,
-        "duration": "1–2 días",
-    })
+    roadmap.append({"phase": "Fase 1 — Depuración y Estabilización",
+                    "obj": "Eliminar riesgos críticos antes del despliegue.",
+                    "tasks": phase1_tasks, "duration": "1–2 días"})
 
     phase2_tasks = []
     if merge_pairs_engine:
         phase2_tasks.append(
             f"Fusionar {n_merge_engine} par(es) de guidelines con similitud ≥ 85% "
-            f"usando las versiones consolidadas generadas en este reporte."
+            "usando las versiones consolidadas generadas en este reporte."
         )
     if merge_log:
         phase2_tasks.append(
             f"Confirmar las {len(merge_log)} fusión/fusiones automáticas ≥ 90% "
-            f"generadas en este reporte."
+            "generadas en este reporte."
         )
     if not phase2_tasks:
         phase2_tasks.append("Validar consistencia del conjunto de guidelines activo.")
-    roadmap.append({
-        "phase":    "Fase 2 — Consolidación",
-        "obj":      "Reducir redundancia y mejorar consistencia del repositorio.",
-        "tasks":    phase2_tasks,
-        "duration": "1–3 días",
-    })
+    roadmap.append({"phase": "Fase 2 — Consolidación",
+                    "obj": "Reducir redundancia y mejorar consistencia del repositorio.",
+                    "tasks": phase2_tasks, "duration": "1–3 días"})
 
     phase3_tasks = []
     if gl_to_modify:
         phase3_tasks.append(
             f"Aplicar modificaciones a {n_modify_d} guideline(s) según las acciones "
-            f"recomendadas en la sección MODIFICAR."
+            "recomendadas en la sección MODIFICAR."
         )
     if optimized_map:
         phase3_tasks.append(
             f"Incorporar las {len(optimized_map)} versión(es) optimizadas "
-            f"generadas en este análisis."
+            "generadas en este análisis."
         )
     phase3_tasks.append(
         "Ejecutar score_guideline en las guidelines modificadas para verificar mejora."
     )
-    roadmap.append({
-        "phase":    "Fase 3 — Optimización",
-        "obj":      "Elevar la calidad técnica del conjunto al estándar de producción.",
-        "tasks":    phase3_tasks,
-        "duration": "2–4 días",
-    })
+    roadmap.append({"phase": "Fase 3 — Optimización",
+                    "obj": "Elevar la calidad técnica del conjunto al estándar de producción.",
+                    "tasks": phase3_tasks, "duration": "2–4 días"})
 
     phase4_tasks = [
         "Ejecutar simulate_fin con las guidelines aprobadas y conversaciones representativas.",
@@ -3605,19 +3475,14 @@ async def architect_review(
         f"Desplegar las {total_approved} guideline(s) aprobadas al entorno de producción de FIN.",
         "Programar revisión arquitectónica periódica.",
     ]
-    roadmap.append({
-        "phase":    "Fase 4 — Validación y Despliegue",
-        "obj":      "Confirmar comportamiento esperado e implementar en producción.",
-        "tasks":    phase4_tasks,
-        "duration": "1–2 días",
-    })
+    roadmap.append({"phase": "Fase 4 — Validación y Despliegue",
+                    "obj": "Confirmar comportamiento esperado e implementar en producción.",
+                    "tasks": phase4_tasks, "duration": "1–2 días"})
 
-    # --- DECISIONES DEL ARQUITECTO (narrativa dinámica) ---
+    # DECISIONES DEL ARQUITECTO (narrativa)
     arch_parts = []
-
     arch_parts.append(
-        f"El análisis de {total_convs} conversación(es) sobre {product} revela que el conjunto "
-        f"de guidelines "
+        f"El análisis de {total_convs} conversación(es) sobre {product} revela que el conjunto de guidelines "
         + (
             "requiere intervención antes del despliegue."
             if deploy_color == "red"
@@ -3626,13 +3491,9 @@ async def architect_review(
             else "está listo para producción."
         )
     )
-
     for el in gl_to_eliminate[:3]:
         short_el = el["guideline"][:80] + ("..." if len(el["guideline"]) > 80 else "")
-        arch_parts.append(
-            f"La guideline \"{short_el}\" no debería desplegarse. {el['reason']}"
-        )
-
+        arch_parts.append(f"La guideline \"{short_el}\" no debería desplegarse. {el['reason']}")
     for mp in merge_pairs_engine[:3]:
         a_s = mp["original_a"][:60] + ("..." if len(mp["original_a"]) > 60 else "")
         b_s = mp["original_b"][:60] + ("..." if len(mp["original_b"]) > 60 else "")
@@ -3641,24 +3502,20 @@ async def architect_review(
             f"Las guidelines \"{a_s}\" y \"{b_s}\" describen el mismo comportamiento "
             f"con una similitud del {mp['similarity']}%. "
             f"Deben fusionarse en: \"{c_s}\". "
-            f"La guideline consolidada cubre ambos escenarios con menor complejidad "
-            f"y menor riesgo operacional."
+            "La guideline consolidada cubre ambos escenarios con menor complejidad y menor riesgo operacional."
         )
-
     for mod in gl_to_modify[:2]:
         short_mod = mod["guideline"][:70] + ("..." if len(mod["guideline"]) > 70 else "")
         arch_parts.append(
             f"La guideline \"{short_mod}\" tiene potencial pero requiere ajuste: "
             f"{mod['reason']} Acción recomendada: {mod['action']}"
         )
-
     if gl_prod_ready:
         arch_parts.append(
             f"Se recomienda implementar únicamente las {n_prod_ready_d} guideline(s) "
-            f"clasificadas como listas para producción y repetir el análisis con "
-            f"architect_review después de incorporar nuevas conversaciones."
+            "clasificadas como listas para producción y repetir el análisis con "
+            "architect_review después de incorporar nuevas conversaciones."
         )
-
     if deploy_color == "red":
         arch_parts.append(
             "Ninguna guideline debe desplegarse en su estado actual. "
@@ -3680,13 +3537,13 @@ async def architect_review(
 
     arch_decisions_narrative = "\n\n".join(arch_parts)
 
-    # --- MÉTRICAS DE GOBERNANZA ---
-    n_active_gov    = len(final_guidelines)
-    n_new_gov       = len([g for g in final_guidelines if g not in current_guidelines])
-    n_elim_gov      = n_eliminate_d
-    n_merged_gov    = len(merge_log) + n_merge_engine
-    n_modified_gov  = len(optimized_map)
-    coverage_gov    = round(
+    # MÉTRICAS DE GOBERNANZA
+    n_active_gov   = len(final_guidelines)
+    n_new_gov      = len([g for g in final_guidelines if g not in current_guidelines])
+    n_elim_gov     = n_eliminate_d
+    n_merged_gov   = len(merge_log) + n_merge_engine
+    n_modified_gov = len(optimized_map)
+    coverage_gov   = round(
         min(100, (n_prod_ready_d + n_merge_engine) / max(total_final_d, 1) * 100
             + (10 if not has_conflicts else 0))
     )
@@ -3709,112 +3566,360 @@ async def architect_review(
         gov_state = "🔴 REQUIERE INTERVENCIÓN"
 
     # ================================================================== #
-    # Construcción del reporte v3                                         #
+    # NUEVAS MÉTRICAS v4                                                  #
+    # ================================================================== #
+
+    # 1. COBERTURA FUNCIONAL
+    area_kw = {
+        "Caja":             ["caja", "turno", "cierre", "apertura"],
+        "Facturación":      ["factura", "cufe", "nota crédito", "documento electrónico"],
+        "Sincronización":   ["sincronizar", "sincronización", "sincroniza"],
+        "Escalamiento":     ["escalar", "escala", "transfiere", "transferir", "agente humano"],
+        "Urgencias":        ["urgencia", "urgente", "inmediato", "prioriza"],
+        "Inventario":       ["inventario", "stock", "producto"],
+        "Acceso":           ["acceso", "contraseña", "login", "usuario", "permiso"],
+        "Configuración":    ["configurar", "configuración", "parámetro"],
+        "Errores Técnicos": ["error", "falla", "reiniciar", "navega", "validar"],
+        "Documentación":    ["artículo", "guía", "documentado", "pasos documentados"],
+    }
+    area_coverage = {}
+    for area_name, keywords in area_kw.items():
+        hits = sum(1 for g in final_guidelines if any(kw in g.lower() for kw in keywords))
+        area_coverage[area_name] = min(100, hits * 25)
+
+    def cov_bar(pct):
+        filled = round(pct / 10)
+        return "█" * filled + "░" * (10 - filled)
+
+    covered_areas    = [a for a, p in area_coverage.items() if p >= 75]
+    partial_areas    = [a for a, p in area_coverage.items() if 10 <= p < 75]
+    uncovered_areas  = [a for a, p in area_coverage.items() if p < 10]
+    overcovered_areas = [a for a, p in area_coverage.items() if p >= 100 and
+                         sum(1 for g in final_guidelines if any(kw in g.lower() for kw in area_kw[a])) >= 4]
+
+    # 2. MÉTRICAS DEL REPOSITORIO
+    repo_total       = len(final_guidelines)
+    repo_duplicated  = len(merge_log) + n_merge_engine
+    repo_merged      = len(merge_log) + n_merge_engine
+    repo_orphans_n   = 0
+    repo_obsolete    = n_eliminate_d
+    repo_conflicting = len(conflicting_guidelines)
+    repo_conditional = n_conditional
+    repo_absolute    = len(gl_absolute_set)
+    repo_optimized   = len(optimized_map)
+    repo_approved    = n_prod_ready_d
+    repo_rejected    = n_eliminate_d
+
+    # 3. ÍNDICE DE MANTENIBILIDAD
+    dup_pen   = min((len(merge_log) + n_merge_engine) * 5, 25)
+    conf_pen  = min(n_conflicts_count * 8, 25)
+    comp_pen  = {"Baja": 0, "Media": 5, "Alta": 12, "Muy Alta": 20}.get(complexity_label_gov, 10)
+    size_pen  = max(0, (repo_total - 12) * 2)
+    cond_bon  = round(cond_ratio_d * 20)
+    score_bon = round((avg_score - 70) / 3) if avg_score > 70 else 0
+
+    maint_idx = max(0, min(100, 100 - dup_pen - conf_pen - comp_pen - size_pen + cond_bon + score_bon))
+
+    if maint_idx >= 85:
+        maint_label, maint_reason = "Excelente", "Repositorio limpio, pocos conflictos y alta proporción de reglas condicionales."
+    elif maint_idx >= 70:
+        maint_label, maint_reason = "Buena", "Repositorio manejable con oportunidades de simplificación."
+    elif maint_idx >= 55:
+        maint_label, maint_reason = "Media", "Duplicados y/o conflictos reducen la claridad operacional del conjunto."
+    elif maint_idx >= 40:
+        maint_label, maint_reason = "Baja", "Repositorio con alta complejidad estructural. Requiere depuración antes del despliegue."
+    else:
+        maint_label, maint_reason = "Crítica", "Repositorio inestable. Conflictos, duplicados y reglas absolutas comprometen el comportamiento de FIN."
+
+    # 4. CONFIDENCE DEL ANÁLISIS
+    n_conv_cf = len(conversations)
+    n_pat_cf  = sum(1 for l in patterns_block if l.startswith("Patrón #"))
+    avg_cov   = round(sum(area_coverage.values()) / len(area_coverage)) if area_coverage else 0
+
+    conv_sc     = 30 if n_conv_cf >= 10 else (20 if n_conv_cf >= 5 else 10)
+    pat_sc      = min(20, n_pat_cf * 5)
+    cov_sc      = round(avg_cov * 0.20)
+    conf_pen_cf = min(15, n_conflicts_count * 5)
+    cons_sc     = round(mat_consistency * 0.15)
+
+    confidence_raw = max(0, min(100, conv_sc + pat_sc + cov_sc + cons_sc - conf_pen_cf))
+
+    if confidence_raw >= 85:
+        conf_label  = "Muy Alta"
+        conf_reason = f"Análisis basado en {n_conv_cf} conversaciones con alta consistencia interna y cobertura amplia."
+    elif confidence_raw >= 70:
+        conf_label  = "Alta"
+        conf_reason = f"Análisis robusto. {n_conv_cf} conversaciones y {n_pat_cf} patrones detectados. Margenes de mejora menores."
+    elif confidence_raw >= 50:
+        conf_label  = "Media"
+        conf_reason = f"Análisis válido pero limitado por el volumen de conversaciones ({n_conv_cf}) o la presencia de conflictos."
+    elif confidence_raw >= 35:
+        conf_label  = "Baja"
+        conf_reason = f"Corpus de conversaciones insuficiente ({n_conv_cf}). Las decisiones deben validarse con más datos antes del despliegue."
+    else:
+        conf_label  = "Muy Baja"
+        conf_reason = f"Muy pocas conversaciones ({n_conv_cf}). El análisis es orientativo. No desplegar sin ampliar el corpus."
+
+    # 5. GUIDELINES HUÉRFANAS
+    all_conv_text = " ".join(
+        (c.get("text", c) if isinstance(c, dict) else c).lower()
+        for c in conversations
+    )
+    stopwords_h = {"si", "el", "la", "los", "las", "un", "una", "de", "del", "en", "es",
+                   "y", "o", "a", "al", "que", "con", "por", "para", "no", "se", "su",
+                   "lo", "le", "cuando", "donde", "como", "más", "pero", "ya", "muy",
+                   "fin", "usuario", "cliente", "guideline", "artículo", "guía"}
+    orphan_guidelines = []
+    for g_h in final_guidelines:
+        words_h   = {w for w in g_h.lower().split() if w not in stopwords_h and len(w) > 4}
+        matches_h = sum(1 for w in words_h if w in all_conv_text)
+        if len(words_h) > 3 and matches_h < 2:
+            orphan_guidelines.append(g_h)
+    repo_orphans_n = len(orphan_guidelines)
+
+    # 6. MATRIZ DE COBERTURA
+    matrix_scenarios = list(area_kw.keys())
+    for kw_pair in [("sincroniz", "Sincronización"), ("caja", "Caja"), ("factura", "Facturación"),
+                    ("inventario", "Inventario"), ("error", "Errores Técnicos"), ("urgencia", "Urgencias")]:
+        if kw_pair[0] in all_conv_text and kw_pair[1] not in matrix_scenarios:
+            matrix_scenarios.append(kw_pair[1])
+
+    def scenario_status(scenario):
+        kws   = area_kw.get(scenario, [scenario.lower()])
+        count = sum(1 for g in final_guidelines if any(kw in g.lower() for kw in kws))
+        if count >= 2:
+            return "✅", "Cubierto"
+        elif count == 1:
+            return "⚠️", "Parcial"
+        else:
+            return "❌", "Sin cobertura"
+
+    matrix_rows      = [(s, *scenario_status(s)) for s in matrix_scenarios]
+    uncovered_matrix = [r[0] for r in matrix_rows if r[1] == "❌"]
+
+    # 7. SIMULACIÓN DE IMPACTO
+    curr_esc       = max(25, 100 - health_score)
+    curr_autonomy  = mat_autonomous
+    curr_conflicts = n_conflicts_count
+    curr_dups      = len(merge_log) + n_merge_engine
+
+    exp_esc       = max(10, curr_esc - esc_base)
+    exp_autonomy  = min(90, curr_autonomy + auto_base)
+    exp_conflicts = max(0, curr_conflicts - (n_conflicts_count if not has_conflicts else 2))
+    exp_dups      = 0
+
+    def arrow(curr, exp, lower_better=False):
+        if lower_better:
+            return "↓" if exp < curr else ("↑" if exp > curr else "→")
+        return "↑" if exp > curr else ("↓" if exp < curr else "→")
+
+    # 8. RESUMEN EJECUTIVO PARA PM
+    pm_what = (
+        f"FIN está escalando casos que podría resolver de forma autónoma en {product}. "
+        f"Detectamos {n_conflicts_count} conflicto(s) entre reglas y {repo_duplicated} guideline(s) "
+        "redundante(s) que generan comportamientos inconsistentes."
+        if has_conflicts or repo_duplicated > 0
+        else
+        f"El sistema de reglas de FIN para {product} funciona correctamente en los escenarios documentados "
+        "pero tiene brechas de cobertura que podrían generar escalamientos en casos no contemplados."
+    )
+    pm_why = (
+        "Ocurre porque algunas reglas se contradicen entre sí y otras aplican sin condiciones, "
+        "obligando a FIN a escalar aunque exista solución disponible."
+        if has_conflicts
+        else
+        "La causa principal es que varias reglas carecen de condiciones explícitas. "
+        "FIN no sabe cuándo aplicarlas, lo que genera decisiones inconsistentes."
+    )
+    pm_first = (
+        f"Eliminar {n_eliminate_d} regla(s) obsoleta(s), resolver los conflictos y publicar únicamente "
+        f"las {n_prod_ready_d} reglas validadas. Todo puede hacerse en menos de una semana."
+        if n_eliminate_d > 0 or has_conflicts
+        else
+        f"Publicar las {n_prod_ready_d} reglas validadas e incorporar más conversaciones para ampliar cobertura."
+    )
+    pm_impact = (
+        f"Se estima una reducción de {esc_reduction_str} en escalamientos y un incremento de "
+        f"{auto_str} en resolución autónoma. Menos carga para el equipo de soporte humano."
+    )
+    pm_risk = (
+        "Si no se actúa, FIN continuará escalando casos resolubles, incrementando el tiempo de atención "
+        "y la carga operativa del equipo de soporte."
+        if health_score < 75
+        else
+        "El riesgo actual es bajo. Sin embargo, no consolidar las reglas redundantes puede generar "
+        "inconsistencias a medida que el conjunto de guidelines crece."
+    )
+
+    # 9. RESUMEN EJECUTIVO PARA SOPORTE
+    support_fin_changes = (
+        f"FIN verificará si el usuario ya intentó la solución antes de repetirla. "
+        f"En los patrones detectados ({', '.join([str(i+1) for i in range(min(3, sum(1 for l in patterns_block if l.startswith('Patrón #'))))]) or 'los identificados'}), "
+        "FIN escalará directamente al detectar intentos previos documentados."
+    )
+    support_agent_changes = (
+        f"Los agentes recibirán {n_prod_ready_d} reglas nuevas o actualizadas. "
+        "Los escalamientos incluirán más contexto: error exacto, pasos realizados y resultado. "
+        f"Se espera una reducción de {esc_reduction_str} en volumen de escalamientos."
+    )
+
+    # PRIORITY SORT for gl_to_modify (multi-factor)
+    def eng_priority(item):
+        s      = item["score"]
+        in_conf = 15 if any(kw in item["guideline"].lower() for kw in ["escal", "urgencia", "bloqueado", "caja"]) else 0
+        ease   = 10 if len(item["guideline"].split()) < 25 else 5
+        cov    = 10 if any(area.lower() in item["guideline"].lower() for area in covered_areas) else 0
+        return s * 0.5 + in_conf + ease + cov
+    gl_to_modify.sort(key=eng_priority, reverse=True)
+
+    # GL index
+    gl_index = {g: f"GL-{i+1}" for i, g in enumerate(final_guidelines)}
+
+    # ================================================================== #
+    # CONSTRUCCIÓN DEL REPORTE v4                                         #
     # ================================================================== #
     sep  = "=" * 48
-    div  = "-" * 40
     div2 = "─" * 40
-    parts = [sep, "FIN ARCHITECT REVIEW  ·  v3", f"{sep}\n"]
+    div3 = "·" * 40
+    parts = []
 
-    # Cabecera
-    parts += ["PRODUCTO\n", f"{product.upper()}\n"]
-    parts += ["OBJETIVO\n", f"{objective if objective else 'No especificado'}\n"]
-    parts += ["RESUMEN EJECUTIVO\n", executive_summary + "\n"]
-    parts += ["SALUD GENERAL DEL PRODUCTO\n",
-              f"{health_emoji} {health_score}/100 — {health_label}\n"]
-    parts += ["CONVERSACIONES ANALIZADAS\n", f"{total_convs} conversación(es)\n"]
-
-    # Hallazgos principales
-    parts += ["HALLAZGOS PRINCIPALES\n"]
-    for fi in findings:
-        parts.append(fi)
+    # SECTION 1 — HEADER
+    parts += [sep, "FIN ARCHITECT REVIEW  ·  v4", f"{sep}\n"]
+    parts.append(
+        f"PRODUCTO: {product.upper()}  |  SALUD: {health_emoji} {health_score}/100 — {health_label}"
+    )
+    parts.append(f"OBJETIVO: {objective if objective else 'No especificado'}")
+    parts.append(
+        f"CONVERSACIONES: {total_convs}  |  CONFIANZA: {conf_label} ({confidence_raw}%)  |  MANTENIBILIDAD: {maint_label} ({maint_idx}%)"
+    )
     parts.append("")
 
-    # ──────────────────────────────────────────────────────────────────
-    #  ARCHITECT DECISION ENGINE
-    # ──────────────────────────────────────────────────────────────────
+    # SECTION 2 — RESUMEN EJECUTIVO PARA PRODUCT MANAGER
+    parts += [div3, "RESUMEN EJECUTIVO PARA PRODUCT MANAGER", f"{div3}\n"]
+    parts.append(f"¿Qué está pasando?\n  {pm_what}\n")
+    parts.append(f"¿Por qué ocurre?\n  {pm_why}\n")
+    parts.append(f"¿Qué hacer primero?\n  {pm_first}\n")
+    parts.append(f"¿Qué impacto tendrá?\n  {pm_impact}\n")
+    parts.append(f"¿Qué pasa si no se actúa?\n  {pm_risk}\n")
+
+    # SECTION 3 — SIMULACIÓN DE IMPACTO
+    parts += [div3, "SIMULACIÓN DE IMPACTO", f"{div3}\n"]
+    parts.append(f"  {'Métrica':<35} {'Actual':>8}   {'Esperado':>8}   Tendencia")
+    parts.append(f"  {'─'*35} {'─'*8}   {'─'*8}   {'─'*9}")
+    parts.append(f"  {'Tasa de escalamiento':<35} {curr_esc:>7}%   {exp_esc:>7}%   {arrow(curr_esc, exp_esc, lower_better=True)}")
+    parts.append(f"  {'Resolución autónoma':<35} {curr_autonomy:>7}%   {exp_autonomy:>7}%   {arrow(curr_autonomy, exp_autonomy)}")
+    parts.append(f"  {'Conflictos activos':<35} {curr_conflicts:>8}   {exp_conflicts:>8}   {arrow(curr_conflicts, exp_conflicts, lower_better=True)}")
+    parts.append(f"  {'Guidelines duplicadas':<35} {curr_dups:>8}   {exp_dups:>8}   {arrow(curr_dups, exp_dups, lower_better=True)}")
+    parts.append("")
+
+    # SECTION 4 — HALLAZGOS PRINCIPALES
+    parts += [div3, "HALLAZGOS PRINCIPALES", f"{div3}\n"]
+    for fi in findings[:6]:
+        parts.append(f"  {fi}")
+    parts.append("")
+
+    # SECTION 5 — COBERTURA FUNCIONAL
+    parts += [div3, "COBERTURA FUNCIONAL", f"{div3}\n"]
+    for area_name, pct in area_coverage.items():
+        bar = cov_bar(pct)
+        parts.append(f"  {area_name:<20} [{bar}] {pct:>3}%")
+    parts.append("")
+    if covered_areas:
+        parts.append(f"  Bien cubiertos: {', '.join(covered_areas)}")
+    if partial_areas:
+        parts.append(f"  Cobertura parcial: {', '.join(partial_areas)}")
+    if uncovered_areas:
+        parts.append(f"  Sin cobertura: {', '.join(uncovered_areas)}")
+    if overcovered_areas:
+        parts.append(f"  Sobrecubiertos (posible redundancia): {', '.join(overcovered_areas)}")
+    parts.append("")
+
+    # SECTION 6 — MATRIZ DE COBERTURA
+    parts += [div3, "MATRIZ DE COBERTURA", f"{div3}\n"]
+    parts.append(f"  {'Escenario':<22} {'Estado':<6} Observación")
+    parts.append(f"  {'─'*22} {'─'*6} {'─'*20}")
+    for row in matrix_rows:
+        parts.append(f"  {row[0]:<22} {row[1]:<6} {row[2]}")
+    parts.append("")
+
+    # ARCHITECT DECISION ENGINE
     parts += [div2, "ARCHITECT DECISION ENGINE", f"{div2}\n"]
 
-    # DECISIONES ARQUITECTÓNICAS
-    parts += ["DECISIONES ARQUITECTÓNICAS\n"]
-
-    # ► LISTAS PARA PRODUCCIÓN
+    # SECTION 7 — DECISIONES ARQUITECTÓNICAS
     parts.append("► LISTAS PARA PRODUCCIÓN\n")
     if gl_prod_ready:
         for item_p in gl_prod_ready:
-            sc_p = item_p["score"]
-            short_p = item_p["guideline"][:90] + ("..." if len(item_p["guideline"]) > 90 else "")
-            parts.append(f"  ✅ [{sc_p}/100] {short_p}")
+            gl_ref = gl_index.get(item_p["guideline"], "GL-?")
+            short_p = item_p["guideline"][:70] + ("..." if len(item_p["guideline"]) > 70 else "")
+            parts.append(f"  ✅ {gl_ref}  [{item_p['score']}/100]  {short_p}")
     else:
         parts.append("  — Ninguna guideline cumple todos los criterios de producción en este ciclo.")
     parts.append("")
 
-    # ► MODIFICAR
     parts.append("► MODIFICAR\n")
     if gl_to_modify:
         for item_m in gl_to_modify:
-            short_m = item_m["guideline"][:80] + ("..." if len(item_m["guideline"]) > 80 else "")
-            parts.append(f"  ⚙️  [{item_m['score']}/100] {short_m}")
-            parts.append(f"      Motivo:            {item_m['reason']}")
-            parts.append(f"      Acción recomendada: {item_m['action']}")
-            parts.append(f"      Impacto esperado:   {item_m['impact']}")
+            gl_ref  = gl_index.get(item_m["guideline"], "GL-?")
+            short_m = item_m["guideline"][:70] + ("..." if len(item_m["guideline"]) > 70 else "")
+            parts.append(f"  ⚙️  {gl_ref}  [{item_m['score']}/100]  {short_m}")
+            parts.append(f"      Motivo:  {item_m['reason']}")
+            parts.append(f"      Acción:  {item_m['action']}")
+            parts.append(f"      Impacto: {item_m['impact']}")
             parts.append("")
     else:
         parts.append("  — No hay guidelines que requieran modificación en este ciclo.\n")
 
-    # ► FUSIONAR
     parts.append("► FUSIONAR\n")
     all_fusion = []
     for orig_f, rep_f in merge_log:
-        all_fusion.append({
-            "original_a":   orig_f,
-            "original_b":   None,
-            "consolidated": rep_f,
-            "similarity":   "≥ 90",
-            "source":       "auto-consolidación ≥ 90%",
-        })
+        all_fusion.append({"original_a": orig_f, "original_b": None,
+                           "consolidated": rep_f, "similarity": "≥ 90", "source": "auto-consolidación ≥ 90%"})
     for mp_f in merge_pairs_engine:
-        all_fusion.append({
-            "original_a":   mp_f["original_a"],
-            "original_b":   mp_f["original_b"],
-            "consolidated": mp_f["consolidated"],
-            "similarity":   str(mp_f["similarity"]),
-            "source":       f"similitud {mp_f['similarity']}%",
-        })
+        all_fusion.append({"original_a": mp_f["original_a"], "original_b": mp_f["original_b"],
+                           "consolidated": mp_f["consolidated"],
+                           "similarity": str(mp_f["similarity"]), "source": f"similitud {mp_f['similarity']}%"})
     if all_fusion:
         for fi_f in all_fusion:
-            a_f  = fi_f["original_a"][:75] + ("..." if len(fi_f["original_a"]) > 75 else "")
-            c_f  = fi_f["consolidated"][:90] + ("..." if len(fi_f["consolidated"]) > 90 else "")
+            a_f = fi_f["original_a"][:75] + ("..." if len(fi_f["original_a"]) > 75 else "")
+            c_f = fi_f["consolidated"][:90] + ("..." if len(fi_f["consolidated"]) > 90 else "")
             parts.append(f"  📎 Similitud: {fi_f['similarity']}%  ({fi_f['source']})")
-            parts.append(f"     Guideline A:       {a_f}")
+            parts.append(f"     Guideline A:     {a_f}")
             if fi_f["original_b"]:
                 b_f = fi_f["original_b"][:75] + ("..." if len(fi_f["original_b"]) > 75 else "")
-                parts.append(f"     Guideline B:       {b_f}")
+                parts.append(f"     Guideline B:     {b_f}")
             parts.append(f"     ↓")
-            parts.append(f"     Guideline final:   {c_f}")
-            parts.append(f"     Justificación:     Ambas describen el mismo comportamiento. "
-                         f"La versión consolidada es más completa y reduce la complejidad del repositorio.")
+            parts.append(f"     Guideline final: {c_f}")
             parts.append("")
     else:
         parts.append("  — No se detectaron pares candidatos a fusión en este ciclo.\n")
 
-    # ► ELIMINAR
     parts.append("► ELIMINAR\n")
     if gl_to_eliminate:
         for item_e in gl_to_eliminate:
-            short_e = item_e["guideline"][:80] + ("..." if len(item_e["guideline"]) > 80 else "")
-            parts.append(f"  🗑️  [{item_e['score']}/100] {short_e}")
+            gl_ref  = gl_index.get(item_e["guideline"], "GL-?")
+            short_e = item_e["guideline"][:70] + ("..." if len(item_e["guideline"]) > 70 else "")
+            parts.append(f"  🗑️  {gl_ref}  [{item_e['score']}/100]  {short_e}")
             parts.append(f"      Razón: {item_e['reason']}")
             parts.append("")
     else:
         parts.append("  — No hay guidelines que deban eliminarse en este ciclo.\n")
 
-    # DECISIÓN DE DESPLIEGUE
+    if orphan_guidelines:
+        parts.append("► GUIDELINES HUÉRFANAS\n")
+        parts.append(f"  ({repo_orphans_n} guideline(s) sin respaldo en las conversaciones analizadas)")
+        for g_o in orphan_guidelines[:5]:
+            gl_ref = gl_index.get(g_o, "GL-?")
+            short_o = g_o[:70] + ("..." if len(g_o) > 70 else "")
+            parts.append(f"  🔍 {gl_ref}  {short_o}")
+        parts.append("  Sugerencia: Ampliar el corpus de conversaciones o validar si estos escenarios son reales.")
+        parts.append("")
+
+    # SECTION 8 — DECISIÓN DE DESPLIEGUE
     parts += [div2, "DECISIÓN DE DESPLIEGUE\n"]
     parts.append(f"  {deploy_status}\n")
-    parts.append(f"  Justificación: {deploy_just}\n")
+    parts.append(f"  {deploy_just}\n")
 
-    # IMPACTO ESTIMADO
+    # SECTION 9 — IMPACTO ESTIMADO
     parts += [div2, "IMPACTO ESTIMADO\n"]
     parts.append(f"  Reducción de escalamientos              {esc_reduction_str}")
     parts.append(f"  Incremento de resolución autónoma       {auto_str}")
@@ -3822,13 +3927,8 @@ async def architect_review(
     parts.append(f"  Disminución de carga para agentes       {load_str}")
     parts.append(f"  Incremento esperado de consistencia     {cons_str}")
     parts.append("")
-    parts.append(
-        "  Nota: estimaciones calculadas a partir de conflictos detectados, score promedio, "
-        "guidelines consolidadas, cobertura de patrones y proporción de flujos condicionales."
-    )
-    parts.append("")
 
-    # ROADMAP DE IMPLEMENTACIÓN
+    # SECTION 10 — ROADMAP
     parts += [div2, "ROADMAP DE IMPLEMENTACIÓN\n"]
     for rm in roadmap:
         parts.append(f"  {rm['phase']}  [{rm['duration']}]")
@@ -3837,14 +3937,36 @@ async def architect_review(
             parts.append(f"    • {t_rm}")
         parts.append("")
 
-    # DECISIONES DEL ARQUITECTO
+    # SECTION 11 — DECISIONES DEL ARQUITECTO
     parts += [div2, "DECISIONES DEL ARQUITECTO\n"]
     for sentence in arch_parts:
         parts.append(f"  {sentence}")
         parts.append("")
 
-    # MÉTRICAS DE GOBERNANZA
-    parts += [div2, "MÉTRICAS DE GOBERNANZA\n"]
+    parts.append(div2)
+    parts.append("")
+
+    # SECTION 12 — MÉTRICAS DEL REPOSITORIO
+    parts += [div3, "MÉTRICAS DEL REPOSITORIO", f"{div3}\n"]
+    parts.append(f"  Total de guidelines           {repo_total}")
+    parts.append(f"  Aprobadas para producción     {repo_approved}")
+    parts.append(f"  Rechazadas / a eliminar       {repo_rejected}")
+    parts.append(f"  Fusionadas (duplicados)       {repo_merged}")
+    parts.append(f"  Huérfanas (sin soporte)       {repo_orphans_n}")
+    parts.append(f"  En conflicto                  {repo_conflicting}")
+    parts.append(f"  Con condiciones explícitas    {repo_conditional}")
+    parts.append(f"  Con términos absolutos        {repo_absolute}")
+    parts.append(f"  Optimizadas en este ciclo     {repo_optimized}")
+    parts.append("")
+
+    # SECTION 13 — ÍNDICE DE MANTENIBILIDAD
+    parts += [div3, "ÍNDICE DE MANTENIBILIDAD", f"{div3}\n"]
+    parts.append(f"  Índice: {maint_idx}/100 — {maint_label}")
+    parts.append(f"  {maint_reason}")
+    parts.append("")
+
+    # SECTION 14 — MÉTRICAS DE GOBERNANZA
+    parts += [div3, "MÉTRICAS DE GOBERNANZA", f"{div3}\n"]
     parts.append(f"  Guidelines activas          {n_active_gov}")
     parts.append(f"  Guidelines nuevas           {n_new_gov}")
     parts.append(f"  Guidelines eliminadas       {n_elim_gov}")
@@ -3856,71 +3978,78 @@ async def architect_review(
     parts.append(f"  Estado general              {gov_state}")
     parts.append("")
 
+    # SECTION 15 — RESUMEN EJECUTIVO PARA SOPORTE
+    parts += [div2, "RESUMEN EJECUTIVO PARA SOPORTE", f"{div2}\n"]
+    parts.append(f"¿Qué cambia para FIN?\n  {support_fin_changes}\n")
+    parts.append(f"¿Qué cambia para los agentes?\n  {support_agent_changes}\n")
+
     parts.append(div2)
     parts.append("")
 
-    # ──────────────────────────────────────────────────────────────────
-    #  ANÁLISIS DE REFERENCIA (datos del pipeline para trazabilidad)
-    # ──────────────────────────────────────────────────────────────────
-    parts += ["PATRONES DETECTADOS\n"]
-    if patterns_block:
-        for line_pb in patterns_block:
-            if line_pb.strip():
-                parts.append(line_pb)
-    else:
-        parts.append("- No se detectaron patrones con suficiente recurrencia.")
+    # SECTION 16 — REFERENCIA TÉCNICA
+    parts += [div3, "REFERENCIA TÉCNICA", f"{div3}\n"]
+
+    # GUIDELINES INDEX
+    parts.append("GUIDELINES INDEX\n")
+    for g_r, gl_ref_r in gl_index.items():
+        sc_r = next((s for s in score_results if s["guideline"] == g_r), {})
+        score_r = sc_r.get("score", "—")
+        short_r = g_r[:80] + ("..." if len(g_r) > 80 else "")
+        parts.append(f"  {gl_ref_r}  {score_r}/100  {short_r}")
     parts.append("")
 
-    parts += ["GUIDELINES DEL CICLO\n"]
-    if merge_log:
-        parts.append("Fusiones automáticas ≥ 90% aplicadas antes del pipeline:\n")
-        for orig_ml, rep_ml in merge_log:
-            o_s = orig_ml[:70] + ("..." if len(orig_ml) > 70 else "")
-            r_s = rep_ml[:70] + ("..." if len(rep_ml) > 70 else "")
-            parts.append(f"  ORIGINAL:    {o_s}")
-            parts.append(f"  → FUSIONADA: {r_s}\n")
-    for i_g, g_g in enumerate(final_guidelines, start=1):
-        cl_g = next((c for c in classification_results if c["guideline"] == g_g), {})
-        sc_g = next((s for s in score_results          if s["guideline"] == g_g), {})
-        score_s = f"Score: {sc_g.get('score', '—')}/100" if sc_g else ""
-        cat_s   = cl_g.get("category", "") if cl_g else ""
-        pri_s   = cl_g.get("priority", "") if cl_g else ""
-        parts.append(f"{i_g}. {g_g}")
-        if cat_s or score_s or pri_s:
-            parts.append(f"   [{cat_s} | {pri_s} | {score_s}]")
+    # PATRONES DETECTADOS (condensado)
+    parts.append("PATRONES DETECTADOS\n")
+    pat_header_fields = {"Patrón #", "Nombre", "Frecuencia", "Riesgo", "Prioridad"}
+    current_pat = {}
+    for line in patterns_block:
+        stripped = line.strip()
+        if stripped.startswith("Patrón #"):
+            if current_pat:
+                parts.append(
+                    f"  {current_pat.get('num', '?')} | {current_pat.get('name', '—')} | "
+                    f"Freq: {current_pat.get('freq', '—')} | Riesgo: {current_pat.get('risk', '—')} | "
+                    f"Prioridad: {current_pat.get('pri', '—')}"
+                )
+            current_pat = {"num": stripped}
+        elif stripped.startswith("Nombre"):
+            current_pat["name"] = stripped.split(":", 1)[-1].strip() if ":" in stripped else ""
+        elif stripped.startswith("Frecuencia"):
+            current_pat["freq"] = stripped.split(":", 1)[-1].strip() if ":" in stripped else stripped
+        elif stripped.startswith("Riesgo"):
+            current_pat["risk"] = stripped.split(":", 1)[-1].strip() if ":" in stripped else stripped
+        elif stripped.startswith("Prioridad"):
+            current_pat["pri"] = stripped.split(":", 1)[-1].strip() if ":" in stripped else stripped
+    if current_pat and "num" in current_pat:
+        parts.append(
+            f"  {current_pat.get('num', '?')} | {current_pat.get('name', '—')} | "
+            f"Freq: {current_pat.get('freq', '—')} | Riesgo: {current_pat.get('risk', '—')} | "
+            f"Prioridad: {current_pat.get('pri', '—')}"
+        )
+    if not any(l.startswith("Patrón #") for l in patterns_block):
+        parts.append("  — No se detectaron patrones con suficiente recurrencia.")
     parts.append("")
 
-    parts += ["AUDITORÍA\n"]
-    if guidelines_clean:
-        parts.append(f"✅ {len(guidelines_clean)} guideline(s) sin problemas críticos.")
-    if guidelines_with_issues:
-        parts.append(f"⚠️ {len(guidelines_with_issues)} guideline(s) con problemas:")
-        for aud_item in guidelines_with_issues:
-            short_aud = aud_item["guideline"][:75] + ("..." if len(aud_item["guideline"]) > 75 else "")
-            parts.append(f"  - \"{short_aud}\"")
-            for iss in aud_item["issues"]:
-                parts.append(f"    {iss}")
-    parts.append("")
-
-    parts += ["CONFLICTOS\n"]
-    if has_conflicts:
-        parts.append("⚠️ Conflictos detectados:")
-        for cl_line in conflict_lines[:6]:
-            parts.append(f"  {cl_line}")
-    else:
-        parts.append("✅ No se detectaron conflictos.")
-    parts.append("")
-
-    parts += ["PUNTAJE DE CALIDAD\n"]
-    parts.append(f"Promedio: {avg_score}/100  |  Máx: {max_score}/100  |  Mín: {min_score}/100\n")
+    # PUNTAJE DE CALIDAD
+    parts.append("PUNTAJE DE CALIDAD\n")
+    parts.append(f"  Promedio: {avg_score}/100  |  Máx: {max_score}/100  |  Mín: {min_score}/100\n")
     for sc_item in sorted(score_results, key=lambda x: -x["score"]):
-        short_sc = sc_item["guideline"][:65] + ("..." if len(sc_item["guideline"]) > 65 else "")
-        interp_s = f" — {sc_item['interpretation']}" if sc_item["interpretation"] else ""
-        parts.append(f"  {sc_item['score']}/100{interp_s}")
-        parts.append(f"  \"{short_sc}\"")
+        gl_ref_sc = gl_index.get(sc_item["guideline"], "GL-?")
+        interp_s  = f" — {sc_item['interpretation']}" if sc_item["interpretation"] else ""
+        parts.append(f"  {gl_ref_sc}  {sc_item['score']}/100{interp_s}")
     parts.append("")
 
-    parts += ["SIMULACIÓN FINAL\n"]
+    # MADUREZ DEL PRODUCTO
+    parts.append("MADUREZ DEL PRODUCTO\n")
+    parts.append(f"  Guidelines          {mat_guidelines}% — {mat_label(mat_guidelines)}")
+    parts.append(f"  Escalamientos       {mat_escalation}% — {mat_label(mat_escalation)}")
+    parts.append(f"  Resolución Autónoma {mat_autonomous}% — {mat_label(mat_autonomous)}")
+    parts.append(f"  Consistencia        {mat_consistency}% — {mat_label(mat_consistency)}")
+    parts.append(f"  Global              {mat_global}% — {mat_label(mat_global)}")
+    parts.append("")
+
+    # SIMULACIÓN FINAL
+    parts.append("SIMULACIÓN FINAL\n")
     sim_label_map = {
         "intention": "Intención detectada",
         "emotion":   "Emoción",
@@ -3929,20 +4058,13 @@ async def architect_review(
         "esc_risk":  "Riesgo de escalamiento",
         "confidence": "Nivel de confianza",
     }
-    for sim_key, sim_label in sim_label_map.items():
+    for sim_key, sim_label_s in sim_label_map.items():
         if sim_key in sim_values:
-            parts.append(f"  {sim_label}: {sim_values[sim_key]}")
+            parts.append(f"  {sim_label_s}: {sim_values[sim_key]}")
     parts.append("")
 
-    # Madurez y conclusión
-    parts += ["MADUREZ DEL PRODUCTO\n"]
-    parts.append(f"  Guidelines          {mat_guidelines}% — {mat_label(mat_guidelines)}")
-    parts.append(f"  Escalamientos       {mat_escalation}% — {mat_label(mat_escalation)}")
-    parts.append(f"  Resolución Autónoma {mat_autonomous}% — {mat_label(mat_autonomous)}")
-    parts.append(f"  Consistencia        {mat_consistency}% — {mat_label(mat_consistency)}")
-    parts.append(f"\n  Global              {mat_global}% — {mat_label(mat_global)}\n")
-
-    parts += ["CONCLUSIÓN DEL ARQUITECTO\n"]
+    # CONCLUSIÓN DEL ARQUITECTO
+    parts.append("CONCLUSIÓN DEL ARQUITECTO\n")
     parts.append(f"  Estado actual\n  {estado}\n")
     parts.append(f"  Principal riesgo\n  {principal_risk}\n")
     parts.append(f"  Mayor oportunidad\n  {oportunidad}\n")
