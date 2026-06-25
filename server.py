@@ -4457,160 +4457,12 @@ async def extract_guidelines(
     # ------------------------------------------------------------------ #
     # Taxonomía de intenciones                                             #
     # ------------------------------------------------------------------ #
-    intention_map = [
-        ("Facturación",   ["factura", "cobro", "pago", "cargo", "reembolso", "facturar", "cufe"]),
-        ("Inventario",    ["inventario", "stock", "producto", "bodega", "existencia", "kardex"]),
-        ("Caja",          ["caja", "cierre de caja", "apertura de caja", "arqueo"]),
-        ("POS",           ["pos", "punto de venta", "terminal", "datafono"]),
-        ("Restobar",      ["restobar", "restaurante", "mesa", "pedido", "cocina", "comanda"]),
-        ("DIAN",          ["dian", "factura electrónica", "cufe", "resolución dian", "rut"]),
-        ("Nómina",        ["nómina", "empleado", "liquidación", "contrato", "devengado"]),
-        ("Reportes",      ["reporte", "informe", "exportar", "estadística", "dashboard"]),
-        ("Configuración", ["configuración", "configurar", "ajuste", "parámetro", "activar"]),
-        ("Error técnico", ["error", "fallo", "no funciona", "no carga", "bug", "problema técnico"]),
-        ("Acceso",        ["contraseña", "acceso", "usuario", "sesión", "login", "clave"]),
-        ("Seguridad",     ["seguridad", "fraude", "robo", "suplantación", "bloqueo"]),
-    ]
+    intention_map = _de.INTENTION_MAP
 
     # ------------------------------------------------------------------ #
     # Catálogo de eventos semánticos                                       #
     # ------------------------------------------------------------------ #
-    EVENT_CATALOG = [
-        {
-            "id":      "user_tried_docs",
-            "label":   "Usuario agotó solución documentada",
-            "signals": [
-                "ya seguí los pasos", "seguí las instrucciones", "hice lo que dice",
-                "intenté lo del artículo", "el artículo no funciona",
-                "ya hice todo lo que dice", "seguí la guía", "ya seguí la guía",
-                "ya intenté la solución", "ya lo intenté", "hice los pasos",
-                "ya hice todos los pasos", "ya consulté", "ya la hice",
-                "ya la consulté", "ya lo hice", "ya intenté",
-                "ya hice lo del", "hice todo lo del", "ya lo del artículo",
-                "ya intenté la solución documentada", "ya intenté todo",
-            ],
-            "impact":   55,
-            "esc_risk": 60,
-        },
-        {
-            "id":      "fin_repeats_solution",
-            "label":   "FIN repitió solución ya agotada",
-            "signals": [
-                "consulta este artículo", "consulta el artículo", "revisa este artículo",
-                "revisa el artículo", "consulta la guía", "revisa la guía",
-                "consulta nuevamente", "revisa nuevamente", "consulta nuevamente la guía",
-                "te recomiendo revisar", "te invito a consultar",
-                "revisa este mismo artículo", "consulta esta guía",
-            ],
-            "impact":   50,
-            "esc_risk": 55,
-        },
-        {
-            "id":      "problem_persists",
-            "label":   "Usuario confirma que el problema continúa",
-            "signals": [
-                "continúa igual", "sigue igual", "no se solucionó", "continúa el error",
-                "no funcionó", "no funciona", "no se resolvió", "persiste",
-                "aún no funciona", "todavía no funciona", "el problema continúa",
-                "no se ha resuelto", "no funcionó", "sigue sin",
-                "el problema sigue", "continúa el problema",
-            ],
-            "impact":   50,
-            "esc_risk": 50,
-        },
-        {
-            "id":      "user_urgency",
-            "label":   "Usuario expresa urgencia",
-            "signals": [
-                "hoy mismo", "urgente", "necesito ahora", "no puedo esperar",
-                "es crítico", "antes de cerrar", "para terminar mi turno",
-                "necesito resolver hoy", "con urgencia",
-            ],
-            "impact":   45,
-            "esc_risk": 40,
-        },
-        {
-            "id":      "user_frustration",
-            "label":   "Usuario expresa frustración",
-            "signals": [
-                "furioso", "harto", "pésimo", "terrible", "inaceptable",
-                "no sirve", "molesto", "enojado", "fastidio", "mal servicio",
-                "no me ayuda", "frustr",
-            ],
-            "impact":   45,
-            "esc_risk": 45,
-        },
-        {
-            "id":      "fin_generic_response",
-            "label":   "FIN no respondió la intención principal",
-            "signals": [
-                "me dijo lo mismo", "misma respuesta", "respuesta repetida",
-                "respuesta automática", "no entiende", "no me respondió",
-                "no respondió mi pregunta", "cambió de tema",
-            ],
-            "impact":   40,
-            "esc_risk": 35,
-        },
-        {
-            "id":      "fin_escalated",
-            "label":   "FIN escaló el caso",
-            "signals": [
-                "me pasaron con", "me transfirieron", "agente humano",
-                "escalaron", "me dejaron en espera", "espera mientras te conecto",
-            ],
-            "impact":   35,
-            "esc_risk": 30,
-        },
-        {
-            "id":      "problem_resolved",
-            "label":   "Usuario confirma resolución exitosa",
-            "signals": [
-                "gracias", "resuelto", "funcionó", "listo", "perfecto",
-                "excelente", "ya funciona", "se solucionó", "muchas gracias",
-            ],
-            "impact":   0,
-            "esc_risk": 0,
-        },
-        {
-            "id":      "fin_requests_info",
-            "label":   "FIN solicitó información adicional",
-            "signals": [
-                "¿puedes indicarme", "¿podrías compartir", "necesito que me indiques",
-                "¿cuál es el error", "¿qué mensaje", "por favor comparte",
-                "¿tienes el número",
-            ],
-            "impact":   15,
-            "esc_risk": 10,
-        },
-        {
-            "id":      "user_multiple_attempts",
-            "label":   "Usuario menciona múltiples intentos",
-            "signals": [
-                "varias veces", "dos veces", "tres veces", "muchas veces",
-                "ya lo intenté varias", "lo he hecho varias",
-            ],
-            "impact":   45,
-            "esc_risk": 50,
-        },
-        {
-            "id":      "user_blocked",
-            "label":   "Usuario está operativamente bloqueado",
-            "signals": [
-                "no puedo continuar", "no puedo trabajar", "no puedo operar",
-                "no puedo cerrar", "no puedo emitir", "no puedo facturar",
-                "bloqueado", "sin acceso", "no me deja", "no permite",
-            ],
-            "impact":   55,
-            "esc_risk": 55,
-        },
-        {
-            "id":      "unnecessary_escalation_risk",
-            "label":   "Escalamiento evitable detectado",
-            "signals": [],
-            "impact":   50,
-            "esc_risk": 65,
-        },
-    ]
+    EVENT_CATALOG = _de.GUIDELINE_EVENT_CATALOG
 
     # ------------------------------------------------------------------ #
     # FASE 1 — Detección de eventos por conversación                       #
@@ -4648,17 +4500,12 @@ async def extract_guidelines(
     # FASE 2 — Similitud Jaccard entre conjuntos de eventos               #
     # ------------------------------------------------------------------ #
     def jaccard(set_a, set_b):
-        a, b = set(set_a), set(set_b)
-        if not a and not b:
-            return 1.0
-        if not a or not b:
-            return 0.0
-        return len(a & b) / len(a | b)
+        return _de.jaccard(set(set_a), set(set_b))
 
     # ------------------------------------------------------------------ #
     # FASE 3 — Union-Find para construir clusters (umbral ≥ 70%)          #
     # ------------------------------------------------------------------ #
-    CLUSTER_THRESHOLD = 0.70
+    CLUSTER_THRESHOLD = _de.GUIDELINE_CLUSTER_THRESHOLD
 
     parent = list(range(total))
 
@@ -4675,7 +4522,7 @@ async def extract_guidelines(
 
     for i in range(total):
         for j in range(i + 1, total):
-            sim = jaccard(conv_data[i]["event_set"], conv_data[j]["event_set"])
+            sim = _de.jaccard(conv_data[i]["event_set"], conv_data[j]["event_set"])
             if sim >= CLUSTER_THRESHOLD:
                 union(i, j)
 
@@ -4687,111 +4534,14 @@ async def extract_guidelines(
     # ------------------------------------------------------------------ #
     # Nombrado de patrones                                                 #
     # ------------------------------------------------------------------ #
-    PATTERN_NAMES = {
-        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists"]):
-            "FIN repite solución ya agotada y el problema continúa",
-        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists", "user_urgency"]):
-            "FIN repite solución ya agotada con urgencia del usuario",
-        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists", "user_blocked"]):
-            "FIN repite solución ya agotada mientras el usuario está bloqueado",
-        frozenset(["user_tried_docs", "fin_repeats_solution", "problem_persists",
-                   "user_urgency", "user_blocked"]):
-            "FIN repite solución ya agotada — usuario bloqueado y urgente",
-        frozenset(["user_tried_docs", "fin_repeats_solution"]):
-            "FIN repite solución ya agotada",
-        frozenset(["user_tried_docs", "problem_persists"]):
-            "Solución documentada insuficiente para el caso",
-        frozenset(["user_urgency", "problem_persists"]):
-            "Urgencia no atendida con problema persistente",
-        frozenset(["user_urgency"]):
-            "Urgencia del usuario no priorizada",
-        frozenset(["user_frustration", "problem_persists"]):
-            "Frustración del usuario ante problema no resuelto",
-        frozenset(["user_blocked", "problem_persists"]):
-            "Usuario operativamente bloqueado sin resolución",
-        frozenset(["fin_generic_response"]):
-            "FIN no respondió la intención principal del usuario",
-        frozenset(["fin_escalated"]):
-            "Caso escalado por FIN",
-        frozenset(["user_multiple_attempts", "problem_persists"]):
-            "Usuario intentó múltiples veces sin resolución",
-        frozenset(["unnecessary_escalation_risk"]):
-            "Escalamiento evitable: FIN no reconoció docs agotados",
-    }
-
     def pattern_name_for(event_set):
-        best_name, best_overlap = None, -1
-        for key, name in PATTERN_NAMES.items():
-            overlap = len(key & event_set)
-            if overlap == len(key) and overlap > best_overlap:
-                best_name = name
-                best_overlap = overlap
-        if best_name:
-            return best_name
-        for ev in sorted(EVENT_CATALOG, key=lambda e: -e["impact"]):
-            if ev["id"] in event_set and ev["id"] != "problem_resolved":
-                return f"Patrón: {ev['label']}"
-        return "Comportamiento de FIN sin patrón catalogado"
+        return _de.cluster_pattern_name(event_set)
 
     # ------------------------------------------------------------------ #
     # Guideline templates                                                  #
     # ------------------------------------------------------------------ #
-    GUIDELINE_TEMPLATES = {
-        "user_tried_docs+fin_repeats_solution": (
-            "Si el usuario de {intention} indica haber seguido los pasos documentados "
-            "sin resultado exitoso, verifica que el problema persista después de los pasos. "
-            "Cuando se confirme, no repitas la misma solución: escala al agente humano "
-            "incluyendo el error exacto, los pasos realizados y el resultado obtenido."
-        ),
-        "user_urgency": (
-            "Cuando el usuario exprese urgencia en un caso de {intention}, "
-            "prioriza la atención de inmediato. "
-            "Si no es posible resolver en la primera interacción, "
-            "escala al agente indicando la urgencia y el detalle del caso."
-        ),
-        "user_blocked": (
-            "Cuando el usuario reporte un bloqueo operativo en {intention}, "
-            "verifica si existe solución documentada y guía paso a paso. "
-            "Únicamente cuando la solución no resuelva el bloqueo, "
-            "escala al agente con el contexto completo."
-        ),
-        "fin_generic_response": (
-            "Antes de responder un caso de {intention}, identifica el escenario específico "
-            "del usuario y adapta la respuesta al contexto concreto "
-            "en lugar de entregar una respuesta genérica o repetir el mismo artículo."
-        ),
-        "user_multiple_attempts": (
-            "Si el usuario indica haber intentado la solución documentada múltiples veces "
-            "en {intention} sin resultado, no repitas el mismo artículo. "
-            "Escala al agente con el historial de intentos y el resultado obtenido."
-        ),
-        "fin_escalated": (
-            "Antes de escalar un caso de {intention}, verifica si existe solución documentada "
-            "y si el usuario aún no la ha intentado. "
-            "Escala únicamente cuando la solución documentada no resuelva el problema."
-        ),
-        "default": (
-            "Verifica el comportamiento de FIN para casos de {intention} "
-            "donde el usuario reporta que el problema continúa tras seguir los pasos documentados."
-        ),
-    }
-
     def guideline_for_events(event_set, intention):
-        if "user_tried_docs" in event_set and "fin_repeats_solution" in event_set:
-            tpl = GUIDELINE_TEMPLATES["user_tried_docs+fin_repeats_solution"]
-        elif "user_multiple_attempts" in event_set:
-            tpl = GUIDELINE_TEMPLATES["user_multiple_attempts"]
-        elif "user_blocked" in event_set:
-            tpl = GUIDELINE_TEMPLATES["user_blocked"]
-        elif "user_urgency" in event_set:
-            tpl = GUIDELINE_TEMPLATES["user_urgency"]
-        elif "fin_generic_response" in event_set:
-            tpl = GUIDELINE_TEMPLATES["fin_generic_response"]
-        elif "fin_escalated" in event_set:
-            tpl = GUIDELINE_TEMPLATES["fin_escalated"]
-        else:
-            tpl = GUIDELINE_TEMPLATES["default"]
-        return tpl.format(intention=intention)
+        return _de.guideline_template_for(event_set)
 
     # ------------------------------------------------------------------ #
     # FASE 4+5 — Una guideline y métricas por cluster                     #
@@ -4813,7 +4563,7 @@ async def extract_guidelines(
         sims = []
         for ii in range(len(indices)):
             for jj in range(ii + 1, len(indices)):
-                sims.append(jaccard(
+                sims.append(_de.jaccard(
                     conv_data[indices[ii]]["event_set"],
                     conv_data[indices[jj]]["event_set"],
                 ))
@@ -4908,7 +4658,7 @@ async def extract_guidelines(
     def text_jaccard(a, b):
         return _de.jaccard(_de.word_set(a), _de.word_set(b))
 
-    MERGE_THRESHOLD = 0.80
+    MERGE_THRESHOLD = _de.GUIDELINE_MERGE_THRESHOLD
     merged = []
     used = set()
 
