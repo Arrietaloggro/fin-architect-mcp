@@ -1,5 +1,5 @@
 <title>Auditoría Diana Zarate · Diagnóstico Restobar · Jun 2026</title>
-<meta name="description" content="Dashboard ejecutivo de auditoría operacional FIN Architect v1.0 — Diana Milena Zarate Beltran, Diagnóstico Restobar, 1–25 junio 2026.">
+<meta name="description" content="Informe completo de auditoría operacional FIN Architect v1.0 — Diana Milena Zarate Beltran, Diagnóstico Restobar, 1–25 junio 2026.">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -42,322 +42,153 @@
     z-index: 100;
     border-bottom: 3px solid var(--accent);
   }
-  .header-brand {
-    font-family: Georgia, 'Times New Roman', serif;
-    font-size: 1.15rem;
-    font-weight: normal;
-    letter-spacing: 0.04em;
-    color: #CBD9ED;
-    white-space: nowrap;
-  }
-  .header-brand strong {
-    color: #fff;
-    font-weight: bold;
-  }
-  .header-divider { width: 1px; height: 32px; background: #2A4A6B; flex-shrink: 0; }
-  .header-meta {
-    display: flex;
-    gap: 2rem;
-    flex-wrap: wrap;
-    flex: 1;
-  }
-  .header-meta-item { font-size: 0.8rem; color: #8DAEC8; }
-  .header-meta-item strong { color: #CBD9ED; display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 1px; }
-  .header-pill {
-    align-self: center;
-    background: #1B3A5C;
-    color: #8DAEC8;
-    font-size: 0.72rem;
-    padding: 3px 10px;
-    border-radius: 20px;
-    letter-spacing: 0.05em;
-    white-space: nowrap;
-  }
+  .header-brand { font-family: Georgia,'Times New Roman',serif; font-size:1.15rem; font-weight:normal; letter-spacing:0.04em; color:#CBD9ED; white-space:nowrap; }
+  .header-brand strong { color:#fff; font-weight:bold; }
+  .header-divider { width:1px; height:32px; background:#2A4A6B; flex-shrink:0; }
+  .header-meta { display:flex; gap:2rem; flex-wrap:wrap; flex:1; }
+  .header-meta-item { font-size:0.8rem; color:#8DAEC8; }
+  .header-meta-item strong { color:#CBD9ED; display:block; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.07em; margin-bottom:1px; }
+  .header-pill { align-self:center; background:#1B3A5C; color:#8DAEC8; font-size:0.72rem; padding:3px 10px; border-radius:20px; letter-spacing:0.05em; white-space:nowrap; }
+
+  /* TOC NAV */
+  .toc { background:var(--navy); padding:0.5rem 2rem; display:flex; gap:0.25rem; flex-wrap:wrap; border-bottom:1px solid #2A4A6B; }
+  .toc a { color:#8DAEC8; text-decoration:none; font-size:0.72rem; padding:4px 10px; border-radius:20px; transition:background 0.15s; }
+  .toc a:hover { background:#2A4A6B; color:#CBD9ED; }
 
   /* PAGE WRAPPER */
-  .page { max-width: 1280px; margin: 0 auto; padding: 2rem 2rem 4rem; }
+  .page { max-width:1280px; margin:0 auto; padding:2rem 2rem 4rem; }
 
   /* SECTION TITLES */
-  .section-title {
-    font-family: Georgia, serif;
-    font-size: 0.8rem;
-    font-weight: normal;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--muted);
-    margin-bottom: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-  .section-gap { margin-top: 2.25rem; }
+  .section-title { font-family:Georgia,serif; font-size:0.8rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:0.75rem; display:flex; align-items:center; gap:0.6rem; }
+  .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+  .section-gap { margin-top:2.25rem; }
 
   /* KPI CARDS */
-  .kpi-row {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 1rem;
-  }
-  @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 600px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:1rem; }
+  @media(max-width:900px){.kpi-row{grid-template-columns:repeat(3,1fr);}}
+  @media(max-width:600px){.kpi-row{grid-template-columns:repeat(2,1fr);}}
+  .kpi-card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:1.1rem 1.25rem; position:relative; overflow:hidden; }
+  .kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+  .kpi-card.ok::before  { background:var(--ok); }
+  .kpi-card.warn::before{ background:var(--warn); }
+  .kpi-card.crit::before{ background:var(--crit); }
+  .kpi-card.blue::before{ background:var(--accent); }
+  .kpi-card.navy::before{ background:var(--navy); }
+  .kpi-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--muted); margin-bottom:0.35rem; }
+  .kpi-value { font-family:Georgia,serif; font-size:2rem; font-weight:bold; color:var(--ink); line-height:1.1; }
+  .kpi-value.warn { color:var(--warn); }
+  .kpi-value.crit { color:var(--crit); }
+  .kpi-value.ok   { color:var(--ok); }
+  .kpi-sub { font-size:0.75rem; color:var(--muted); margin-top:0.25rem; }
+  .kpi-badge { display:inline-block; font-size:0.68rem; padding:2px 7px; border-radius:20px; font-weight:600; letter-spacing:0.04em; margin-top:0.4rem; }
+  .badge-ok   { background:var(--ok-bg);   color:#065F46; }
+  .badge-warn { background:var(--warn-bg); color:#92400E; }
+  .badge-crit { background:var(--crit-bg); color:#991B1B; }
+  .badge-blue { background:#EFF6FF;        color:#1D4ED8; }
 
-  .kpi-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1.1rem 1.25rem;
-    position: relative;
-    overflow: hidden;
-  }
-  .kpi-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-  }
-  .kpi-card.ok::before  { background: var(--ok); }
-  .kpi-card.warn::before{ background: var(--warn); }
-  .kpi-card.crit::before{ background: var(--crit); }
-  .kpi-card.blue::before{ background: var(--accent); }
-  .kpi-card.navy::before{ background: var(--navy); }
-
-  .kpi-label {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--muted);
-    margin-bottom: 0.35rem;
-  }
-  .kpi-value {
-    font-family: Georgia, serif;
-    font-size: 2rem;
-    font-weight: bold;
-    color: var(--ink);
-    line-height: 1.1;
-  }
-  .kpi-value.warn { color: var(--warn); }
-  .kpi-value.crit { color: var(--crit); }
-  .kpi-value.ok   { color: var(--ok); }
-  .kpi-sub {
-    font-size: 0.75rem;
-    color: var(--muted);
-    margin-top: 0.25rem;
-  }
-  .kpi-badge {
-    display: inline-block;
-    font-size: 0.68rem;
-    padding: 2px 7px;
-    border-radius: 20px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    margin-top: 0.4rem;
-  }
-  .badge-ok   { background: var(--ok-bg);   color: #065F46; }
-  .badge-warn { background: var(--warn-bg); color: #92400E; }
-  .badge-crit { background: var(--crit-bg); color: #991B1B; }
-  .badge-blue { background: #EFF6FF;        color: #1D4ED8; }
-
-  /* TWO-COL LAYOUT */
-  .two-col {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.25rem;
-    align-items: start;
-  }
-  @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+  /* LAYOUTS */
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; align-items:start; }
+  .three-col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.25rem; align-items:start; }
+  @media(max-width:800px){.two-col,.three-col{grid-template-columns:1fr;}}
 
   /* CARDS */
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1.25rem 1.5rem;
-  }
-  .card-title {
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    margin-bottom: 1rem;
-  }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:1.25rem 1.5rem; }
+  .card.no-pad { padding:0; }
+  .card-title { font-size:0.78rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-bottom:1rem; }
 
-  /* DISTRIBUTION BAR CHART */
-  .dist-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.6rem;
-    font-size: 0.82rem;
-  }
-  .dist-label { width: 90px; color: var(--muted); text-align: right; flex-shrink: 0; }
-  .dist-bar-wrap { flex: 1; background: var(--ground); border-radius: 3px; height: 22px; position: relative; overflow: hidden; }
-  .dist-bar {
-    height: 100%;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    padding: 0 8px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #fff;
-    transition: width 0.4s ease;
-    min-width: 28px;
-  }
-  .dist-count { width: 36px; text-align: right; font-weight: 600; color: var(--ink); flex-shrink: 0; }
-  .dist-pct   { width: 44px; color: var(--muted); font-size: 0.78rem; }
+  /* DIST BARS */
+  .dist-row { display:flex; align-items:center; gap:0.75rem; margin-bottom:0.6rem; font-size:0.82rem; }
+  .dist-label { width:90px; color:var(--muted); text-align:right; flex-shrink:0; }
+  .dist-label-wide { width:210px; color:var(--muted); text-align:left; flex-shrink:0; }
+  .dist-bar-wrap { flex:1; background:var(--ground); border-radius:3px; height:22px; position:relative; overflow:hidden; }
+  .dist-bar { height:100%; border-radius:3px; display:flex; align-items:center; padding:0 8px; font-size:0.75rem; font-weight:600; color:#fff; min-width:28px; }
+  .dist-count { width:36px; text-align:right; font-weight:600; color:var(--ink); flex-shrink:0; }
+  .dist-pct   { width:44px; color:var(--muted); font-size:0.78rem; }
 
-  /* TIMELINE BAR CHART */
-  .timeline-chart {
-    display: flex;
-    align-items: flex-end;
-    gap: 4px;
-    height: 120px;
-    padding-bottom: 28px;
-    position: relative;
-    overflow-x: auto;
-  }
-  .timeline-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex: 1;
-    min-width: 28px;
-    gap: 2px;
-    position: relative;
-  }
-  .timeline-bar {
-    width: 100%;
-    border-radius: 3px 3px 0 0;
-    background: var(--accent);
-    transition: opacity 0.2s;
-    position: relative;
-  }
-  .timeline-bar:hover { opacity: 0.75; }
-  .timeline-bar.peak { background: var(--navy); }
-  .timeline-bar.zero { background: var(--border); border-radius: 3px; min-height: 4px; }
-  .timeline-label {
-    position: absolute;
-    bottom: -26px;
-    font-size: 0.62rem;
-    color: var(--muted);
-    text-align: center;
-    width: 100%;
-    white-space: nowrap;
-  }
-  .timeline-count {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--ink);
-    margin-bottom: 1px;
-  }
+  /* TIMELINE */
+  .timeline-chart { display:flex; align-items:flex-end; gap:4px; height:120px; padding-bottom:28px; position:relative; overflow-x:auto; }
+  .timeline-col { display:flex; flex-direction:column; align-items:center; flex:1; min-width:28px; gap:2px; position:relative; }
+  .timeline-bar { width:100%; border-radius:3px 3px 0 0; background:var(--accent); position:relative; }
+  .timeline-bar:hover { opacity:0.75; }
+  .timeline-bar.peak { background:var(--navy); }
+  .timeline-bar.zero { background:var(--border); border-radius:3px; min-height:4px; }
+  .timeline-label { position:absolute; bottom:-26px; font-size:0.62rem; color:var(--muted); text-align:center; width:100%; white-space:nowrap; }
+  .timeline-count { font-size:0.65rem; font-weight:700; color:var(--ink); margin-bottom:1px; }
 
-  /* GAUGE / SLA */
-  .gauge-row { display: flex; flex-direction: column; gap: 1.2rem; }
-  .gauge-item {}
-  .gauge-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-  .gauge-name { font-size: 0.82rem; color: var(--text); }
-  .gauge-pct { font-size: 1.2rem; font-weight: 700; font-family: Georgia, serif; }
-  .gauge-track { background: var(--ground); border-radius: 6px; height: 12px; overflow: hidden; }
-  .gauge-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; }
-  .gauge-meta { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+  /* GAUGE */
+  .gauge-row { display:flex; flex-direction:column; gap:1.2rem; }
+  .gauge-header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px; }
+  .gauge-name { font-size:0.82rem; color:var(--text); }
+  .gauge-pct { font-size:1.2rem; font-weight:700; font-family:Georgia,serif; }
+  .gauge-track { background:var(--ground); border-radius:6px; height:12px; overflow:hidden; }
+  .gauge-fill { height:100%; border-radius:6px; }
+  .gauge-meta { font-size:0.72rem; color:var(--muted); margin-top:3px; }
 
   /* STAT GRID */
-  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; }
-  .stat-item {}
-  .stat-val { font-size: 1.4rem; font-family: Georgia, serif; font-weight: bold; color: var(--ink); }
-  .stat-lbl { font-size: 0.72rem; color: var(--muted); margin-top: 1px; }
+  .stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem 1.5rem; }
+  .stat-val { font-size:1.4rem; font-family:Georgia,serif; font-weight:bold; color:var(--ink); }
+  .stat-lbl { font-size:0.72rem; color:var(--muted); margin-top:1px; }
 
   /* TABLES */
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-  th {
-    text-align: left;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    padding: 6px 10px;
-    border-bottom: 2px solid var(--border);
-    background: var(--ground);
-    white-space: nowrap;
-  }
-  td { padding: 8px 10px; border-bottom: 1px solid #EEF3F9; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #F7FAFF; }
-  .mono { font-family: 'Courier New', monospace; font-size: 0.78rem; color: var(--muted); }
-  .td-title { max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+  th { text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); padding:6px 10px; border-bottom:2px solid var(--border); background:var(--ground); white-space:nowrap; }
+  td { padding:8px 10px; border-bottom:1px solid #EEF3F9; vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:#F7FAFF; }
+  .mono { font-family:'Courier New',monospace; font-size:0.78rem; color:var(--muted); }
+  .td-title { max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   /* CHIPS */
-  .chip {
-    display: inline-block;
-    font-size: 0.68rem;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 20px;
-    white-space: nowrap;
-    letter-spacing: 0.03em;
-  }
-  .chip-ok      { background: var(--ok-bg);   color: #065F46; }
-  .chip-warn    { background: var(--warn-bg); color: #92400E; }
-  .chip-crit    { background: var(--crit-bg); color: #991B1B; }
-  .chip-blue    { background: #EFF6FF;        color: #1D4ED8; }
-  .chip-grey    { background: #F1F5F9;        color: #475569; }
-  .chip-open    { background: #FFF7ED;        color: #9A3412; }
+  .chip { display:inline-block; font-size:0.68rem; font-weight:600; padding:2px 8px; border-radius:20px; white-space:nowrap; letter-spacing:0.03em; }
+  .chip-ok   { background:var(--ok-bg);   color:#065F46; }
+  .chip-warn { background:var(--warn-bg); color:#92400E; }
+  .chip-crit { background:var(--crit-bg); color:#991B1B; }
+  .chip-blue { background:#EFF6FF;        color:#1D4ED8; }
+  .chip-grey { background:#F1F5F9;        color:#475569; }
+  .chip-open { background:#FFF7ED;        color:#9A3412; }
 
   /* FINDING CARDS */
-  .findings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  @media (max-width: 700px) { .findings-grid { grid-template-columns: 1fr; } }
-  .finding-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem 1.15rem;
-    border-left: 4px solid var(--border);
-  }
-  .finding-card.f-crit { border-left-color: var(--crit); }
-  .finding-card.f-warn { border-left-color: var(--warn); }
-  .finding-card.f-ok   { border-left-color: var(--ok); }
-  .finding-card.f-blue { border-left-color: var(--accent); }
-  .finding-title {
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--ink);
-    margin-bottom: 0.35rem;
-  }
-  .finding-body { font-size: 0.78rem; color: var(--muted); line-height: 1.55; }
-  .finding-tag {
-    display: inline-block;
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    margin-bottom: 0.4rem;
-  }
-  .tag-crit { color: var(--crit); }
-  .tag-warn { color: var(--warn); }
-  .tag-ok   { color: var(--ok); }
-  .tag-blue { color: var(--accent); }
+  .findings-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  @media(max-width:700px){.findings-grid{grid-template-columns:1fr;}}
+  .finding-card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:1rem 1.15rem; border-left:4px solid var(--border); }
+  .finding-card.f-crit { border-left-color:var(--crit); }
+  .finding-card.f-warn { border-left-color:var(--warn); }
+  .finding-card.f-ok   { border-left-color:var(--ok); }
+  .finding-card.f-blue { border-left-color:var(--accent); }
+  .finding-title { font-size:0.82rem; font-weight:600; color:var(--ink); margin-bottom:0.35rem; }
+  .finding-body  { font-size:0.78rem; color:var(--muted); line-height:1.55; }
+  .finding-tag   { display:inline-block; font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.4rem; }
+  .tag-crit { color:var(--crit); }
+  .tag-warn { color:var(--warn); }
+  .tag-ok   { color:var(--ok); }
+  .tag-blue { color:var(--accent); }
+
+  /* ALERT BOX */
+  .alert-box { padding:0.9rem 1rem; border-radius:6px; border:1px solid; margin-top:0.75rem; font-size:0.8rem; }
+  .alert-crit { background:var(--crit-bg); border-color:#FECACA; color:#7F1D1D; }
+  .alert-warn { background:var(--warn-bg); border-color:#FDE68A; color:#78350F; }
+  .alert-ok   { background:var(--ok-bg);   border-color:#A7F3D0; color:#064E3B; }
+  .alert-blue { background:#EFF6FF;        border-color:#BFDBFE; color:#1E3A8A; }
+  .alert-label { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.3rem; }
+
+  /* NOTE */
+  .note { background:#F8FAFC; border:1px solid var(--border); border-left:3px solid var(--accent); padding:0.75rem 1rem; border-radius:0 6px 6px 0; font-size:0.78rem; color:var(--muted); margin-top:0.75rem; line-height:1.6; }
+
+  /* TABLE STRIPES */
+  .outlier-row td { background:#FEF2F2 !important; }
+  .stripe-crit td:first-child { border-left:3px solid var(--crit); }
+  .stripe-warn td:first-child { border-left:3px solid var(--warn); }
+  .stripe-ok   td:first-child { border-left:3px solid var(--ok); }
 
   /* FOOTER */
-  .footer {
-    margin-top: 3rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--border);
-    font-size: 0.72rem;
-    color: var(--muted);
-    display: flex;
-    gap: 2rem;
-    flex-wrap: wrap;
-  }
+  .footer { margin-top:3rem; padding-top:1.25rem; border-top:1px solid var(--border); font-size:0.72rem; color:var(--muted); display:flex; gap:2rem; flex-wrap:wrap; }
 
-  /* OUTLIER HIGHLIGHT */
-  .outlier-row td { background: #FEF2F2 !important; }
-
-  /* SEVERITY STRIPE */
-  .stripe-crit td:first-child { border-left: 3px solid var(--crit); }
-  .stripe-warn td:first-child { border-left: 3px solid var(--warn); }
-  .stripe-ok   td:first-child { border-left: 3px solid var(--ok); }
+  /* INLINE SUMMARY ROW */
+  .summary-row { display:flex; gap:1.5rem; flex-wrap:wrap; padding:0.75rem 0; border-top:1px solid var(--border); margin-top:0.75rem; }
+  .summary-item {}
+  .summary-item .sv { font-size:1.1rem; font-weight:700; color:var(--ink); }
+  .summary-item .sl { font-size:0.72rem; color:var(--muted); }
 </style>
 
 <!-- HEADER -->
@@ -370,482 +201,532 @@
     <div class="header-meta-item"><strong>Período</strong>1–25 jun 2026</div>
     <div class="header-meta-item"><strong>Generado</strong>26 jun 2026</div>
   </div>
-  <div class="header-pill">Auditoría Operacional</div>
+  <div class="header-pill">Informe Completo</div>
 </header>
+
+<!-- TOC -->
+<nav class="toc">
+  <a href="#resumen">Resumen</a>
+  <a href="#contexto">Contexto</a>
+  <a href="#s1">§1 Tiempos</a>
+  <a href="#s2">§2 Sin gestión</a>
+  <a href="#s3">§3 Escalamiento</a>
+  <a href="#s4">§4 Folios</a>
+  <a href="#s5">§5 SLA</a>
+  <a href="#s6">§6 Temporal</a>
+  <a href="#s7">§7 Autogestión</a>
+  <a href="#s8">§8 Hallazgos</a>
+  <a href="#apendice">Apéndice</a>
+</nav>
 
 <div class="page">
 
-  <!-- KPI STRIP -->
-  <p class="section-title">Indicadores principales</p>
-  <div class="kpi-row">
-    <div class="kpi-card navy">
-      <div class="kpi-label">Total casos en alcance</div>
-      <div class="kpi-value">54</div>
-      <div class="kpi-sub">Jun 1–25, 2026 · team 10111540</div>
-    </div>
-    <div class="kpi-card ok">
-      <div class="kpi-label">Casos gestionados</div>
-      <div class="kpi-value ok">48</div>
-      <div class="kpi-sub">88.9% del total</div>
-      <span class="kpi-badge badge-ok">✓ Gestionado</span>
-    </div>
-    <div class="kpi-card warn">
-      <div class="kpi-label">Sin gestión de Diana</div>
-      <div class="kpi-value warn">6</div>
-      <div class="kpi-sub">11.1% · 1 activo urgente</div>
-      <span class="kpi-badge badge-warn">⚠ Requiere revisión</span>
-    </div>
-    <div class="kpi-card warn">
-      <div class="kpi-label">SLA escalación &lt;24h</div>
-      <div class="kpi-value warn">78.4%</div>
-      <div class="kpi-sub">Meta: 90% · Brecha: −11.6 pp</div>
-      <span class="kpi-badge badge-warn">⚠ Meta no cumplida</span>
-    </div>
-    <div class="kpi-card ok">
-      <div class="kpi-label">SLA resolución ≤3d</div>
-      <div class="kpi-value ok">100%</div>
-      <div class="kpi-sub">12/12 casos con datos SLA</div>
-      <span class="kpi-badge badge-ok">✓ Meta cumplida</span>
-    </div>
-  </div>
-
-  <!-- SECTION 1: TIME DISTRIBUTION + SLA -->
-  <div class="section-gap">
-    <p class="section-title">Sección 1 — Tiempo de asignación a primera gestión</p>
-    <div class="two-col">
-
-      <div class="card">
-        <div class="card-title">Distribución por rango de tiempo (n = 37 casos medibles)</div>
-        <div class="dist-row">
-          <div class="dist-label">&lt; 1 hora</div>
-          <div class="dist-bar-wrap">
-            <div class="dist-bar" style="width:35.1%;background:#10B981">13</div>
-          </div>
-          <div class="dist-count">13</div>
-          <div class="dist-pct">35.1%</div>
-        </div>
-        <div class="dist-row">
-          <div class="dist-label">1 – 4 h</div>
-          <div class="dist-bar-wrap">
-            <div class="dist-bar" style="width:10.8%;background:#34D399">4</div>
-          </div>
-          <div class="dist-count">4</div>
-          <div class="dist-pct">10.8%</div>
-        </div>
-        <div class="dist-row">
-          <div class="dist-label">4 – 8 h</div>
-          <div class="dist-bar-wrap">
-            <div class="dist-bar" style="width:5.4%;background:#6EE7B7">2</div>
-          </div>
-          <div class="dist-count">2</div>
-          <div class="dist-pct">5.4%</div>
-        </div>
-        <div class="dist-row">
-          <div class="dist-label">8 – 24 h</div>
-          <div class="dist-bar-wrap">
-            <div class="dist-bar" style="width:27%;background:#F59E0B">10</div>
-          </div>
-          <div class="dist-count">10</div>
-          <div class="dist-pct">27.0%</div>
-        </div>
-        <div class="dist-row">
-          <div class="dist-label">24 – 48 h</div>
-          <div class="dist-bar-wrap">
-            <div class="dist-bar" style="width:10.8%;background:#F97316">4</div>
-          </div>
-          <div class="dist-count">4</div>
-          <div class="dist-pct">10.8%</div>
-        </div>
-        <div class="dist-row">
-          <div class="dist-label">&gt; 48 h</div>
-          <div class="dist-bar-wrap">
-            <div class="dist-bar" style="width:10.8%;background:#EF4444">4</div>
-          </div>
-          <div class="dist-count">4</div>
-          <div class="dist-pct">10.8%</div>
-        </div>
-
-        <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border);">
-          <div class="stat-grid">
-            <div class="stat-item">
-              <div class="stat-val">27:08</div>
-              <div class="stat-lbl">Promedio (HH:MM)</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-val">05:21</div>
-              <div class="stat-lbl">Mediana (HH:MM)</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-val" style="color:var(--crit)">429:12</div>
-              <div class="stat-lbl">Máximo — outlier 17.9 d</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-val">~47:13</div>
-              <div class="stat-lbl">P90 (HH:MM)</div>
-            </div>
-          </div>
-          <div style="font-size:0.72rem;color:var(--muted);margin-top:0.6rem;">
-            8 casos auto-gestionados (Diana actuó antes de asignación formal) · 9 sin datos medibles
-          </div>
-        </div>
+  <!-- ═══ RESUMEN EJECUTIVO ═══ -->
+  <div id="resumen">
+    <p class="section-title">Resumen ejecutivo</p>
+    <div class="kpi-row">
+      <div class="kpi-card navy">
+        <div class="kpi-label">Total casos en alcance</div>
+        <div class="kpi-value">54</div>
+        <div class="kpi-sub">Jun 1–25 · team 10111540</div>
       </div>
-
-      <div class="card">
-        <div class="card-title">Cumplimiento SLA</div>
-        <div class="gauge-row">
-          <div class="gauge-item">
-            <div class="gauge-header">
-              <span class="gauge-name">SLA Escalación interna &lt;24h</span>
-              <span class="gauge-pct" style="color:var(--warn)">78.4%</span>
-            </div>
-            <div class="gauge-track">
-              <div class="gauge-fill" style="width:78.4%;background:var(--warn)"></div>
-            </div>
-            <div class="gauge-meta">29/37 casos bajo 24h · Meta: 90% · <strong style="color:var(--crit)">Brecha: −11.6 pp</strong></div>
-          </div>
-
-          <div class="gauge-item">
-            <div class="gauge-header">
-              <span class="gauge-name">SLA Resolución ≤3 días</span>
-              <span class="gauge-pct" style="color:var(--ok)">100%</span>
-            </div>
-            <div class="gauge-track">
-              <div class="gauge-fill" style="width:100%;background:var(--ok)"></div>
-            </div>
-            <div class="gauge-meta">12/12 casos · Promedio cierre: 6h 47m · Máximo: 47h 26m</div>
-          </div>
-
-          <div class="gauge-item">
-            <div class="gauge-header">
-              <span class="gauge-name">Tasa de gestión Diana</span>
-              <span class="gauge-pct" style="color:var(--accent)">88.9%</span>
-            </div>
-            <div class="gauge-track">
-              <div class="gauge-fill" style="width:88.9%;background:var(--accent)"></div>
-            </div>
-            <div class="gauge-meta">48/54 casos con al menos 1 acción de Diana</div>
-          </div>
-
-          <div style="margin-top:1rem; padding:0.9rem; background:var(--crit-bg); border-radius:6px; border:1px solid #FECACA;">
-            <div style="font-size:0.72rem;font-weight:700;color:var(--crit);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.4rem;">⚠ Alerta SLA escalación</div>
-            <div style="font-size:0.8rem;color:#7F1D1D;">Para alcanzar el 90%, Diana debe gestionar 4 casos adicionales en &lt;24h del período actual. Los 8 casos que incumplieron son mayoritariamente NIT acumulados y sugerencias de baja prioridad.</div>
-          </div>
-        </div>
+      <div class="kpi-card ok">
+        <div class="kpi-label">Casos gestionados</div>
+        <div class="kpi-value ok">48</div>
+        <div class="kpi-sub">88.9% del total</div>
+        <span class="kpi-badge badge-ok">✓ Gestionado</span>
+      </div>
+      <div class="kpi-card warn">
+        <div class="kpi-label">Sin gestión de Diana</div>
+        <div class="kpi-value warn">6</div>
+        <div class="kpi-sub">11.1% · 1 activo urgente</div>
+        <span class="kpi-badge badge-warn">⚠ Requiere revisión</span>
+      </div>
+      <div class="kpi-card warn">
+        <div class="kpi-label">SLA escalación &lt;24h</div>
+        <div class="kpi-value warn">78.4%</div>
+        <div class="kpi-sub">Meta: 90% · Brecha: −11.6 pp</div>
+        <span class="kpi-badge badge-warn">⚠ Meta no cumplida</span>
+      </div>
+      <div class="kpi-card ok">
+        <div class="kpi-label">SLA resolución ≤3d</div>
+        <div class="kpi-value ok">100%</div>
+        <div class="kpi-sub">12/12 casos con datos SLA</div>
+        <span class="kpi-badge badge-ok">✓ Meta cumplida</span>
       </div>
     </div>
-  </div>
 
-  <!-- SECTION: TOP 10 SLOWEST -->
-  <div class="section-gap">
-    <p class="section-title">Top 10 casos más lentos (asignación → primera gestión)</p>
-    <div class="card" style="padding:0">
+    <div class="card" style="margin-top:1rem">
+      <div class="card-title">Métricas adicionales del resumen</div>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>ID conversación</th>
-              <th>Título</th>
-              <th>Tiempo</th>
-              <th>HH:MM:SS</th>
-              <th>Asignado</th>
-              <th>Primera acción</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
           <tbody>
-            <tr class="outlier-row stripe-crit">
-              <td><strong>1</strong></td>
-              <td class="mono">…537554895</td>
-              <td class="td-title">GUACAMOLYN FOOD BRAND (NIT)</td>
-              <td><span class="chip chip-crit">1,546,342 s</span></td>
-              <td><strong style="color:var(--crit)">429:12:22</strong></td>
-              <td>Jun 1</td>
-              <td>Jun 19</td>
-            </tr>
-            <tr class="stripe-crit">
-              <td>2</td>
-              <td class="mono">…684227177</td>
-              <td class="td-title">Las Presitas wing (NIT)</td>
-              <td>296,441 s</td>
-              <td>82:20:41</td>
-              <td>Jun 10</td>
-              <td>Jun 13</td>
-            </tr>
-            <tr class="stripe-crit">
-              <td>3</td>
-              <td class="mono">…683463491</td>
-              <td class="td-title">Las Presitas wing — 2do folio (NIT)</td>
-              <td>296,078 s</td>
-              <td>82:14:38</td>
-              <td>Jun 10</td>
-              <td>Jun 13</td>
-            </tr>
-            <tr class="stripe-warn">
-              <td>4</td>
-              <td class="mono">…594629827</td>
-              <td class="td-title">BOMART (Sugerencia escalada)</td>
-              <td>239,661 s</td>
-              <td>66:34:21</td>
-              <td>Jun 6</td>
-              <td>Jun 9</td>
-            </tr>
-            <tr class="stripe-warn">
-              <td>5</td>
-              <td class="mono">…554426949</td>
-              <td class="td-title">SANDWICHES (Sugerencia esc.)</td>
-              <td>169,972 s</td>
-              <td>47:12:52</td>
-              <td>Jun 2</td>
-              <td>Jun 4</td>
-            </tr>
-            <tr class="stripe-warn">
-              <td>6</td>
-              <td class="mono">…548441925</td>
-              <td class="td-title">BODEGA COCINA ISLA (Diag)</td>
-              <td>169,703 s</td>
-              <td>47:08:23</td>
-              <td>Jun 2</td>
-              <td>Jun 4</td>
-            </tr>
-            <tr class="stripe-warn">
-              <td>7</td>
-              <td class="mono">…703254206</td>
-              <td class="td-title">LA AZOTEA GASTROBAR (Sug)</td>
-              <td>146,781 s</td>
-              <td>40:46:21</td>
-              <td>Jun 12</td>
-              <td>Jun 13</td>
-            </tr>
-            <tr class="stripe-warn">
-              <td>8</td>
-              <td class="mono">…784953736</td>
-              <td class="td-title">DON FIERRO POPAYÁN (NIT)</td>
-              <td>129,203 s</td>
-              <td>35:53:23</td>
-              <td>Jun 22</td>
-              <td>Jun 23</td>
-            </tr>
-            <tr>
-              <td>9</td>
-              <td class="mono">…563840449</td>
-              <td class="td-title">Barroco Restaurante (Sug)</td>
-              <td>77,442 s</td>
-              <td>21:30:42</td>
-              <td>Jun 3</td>
-              <td>Jun 4</td>
-            </tr>
-            <tr>
-              <td>10</td>
-              <td class="mono">…550300181</td>
-              <td class="td-title">QUILE STEAK (NIT)</td>
-              <td>75,988 s</td>
-              <td>21:06:28</td>
-              <td>Jun 2</td>
-              <td>Jun 3</td>
-            </tr>
+            <tr><td>Tiempo promedio asignación → primera gestión</td><td><strong>27h 08m</strong></td></tr>
+            <tr><td>Tiempo mediano asignación → primera gestión</td><td><strong>5h 21m</strong></td></tr>
+            <tr><td>Percentil 90 (P90)</td><td>~47h 13m</td></tr>
+            <tr><td>Tiempo mínimo de primera gestión</td><td>1 segundo</td></tr>
+            <tr><td>Tiempo máximo de primera gestión</td><td><span class="chip chip-crit">429h 12m — outlier 17.9 días</span></td></tr>
+            <tr><td>Tickets cerrados / resueltos</td><td>47 / 54 (87.0%)</td></tr>
+            <tr><td>Tickets abiertos</td><td>7 / 54 (13.0%)</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
 
-  <!-- SECTION: TIMELINE -->
-  <div class="section-gap">
-    <p class="section-title">Sección 6 — Volumen diario de casos (Jun 1–25)</p>
-    <div class="card">
-      <div class="card-title">Casos creados por día · Semanas coloreadas alternadas</div>
-      <div style="position:relative;">
-        <div class="timeline-chart" id="timeline">
-          <!-- JS renders bars -->
+  <!-- ═══ CONTEXTO ═══ -->
+  <div id="contexto" class="section-gap">
+    <p class="section-title">Contexto y alcance</p>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Infraestructura identificada</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Entidad</th><th>ID</th><th>Nombre</th></tr></thead>
+            <tbody>
+              <tr><td>Team (inbox)</td><td class="mono">10111540</td><td>PQR RESTOBAR (interno) / "Diagnóstico Restobar"</td></tr>
+              <tr><td>SLA aplicado</td><td>—</td><td>"Diagnostico" · Meta resolución: 259,200 seg (3 días)</td></tr>
+              <tr><td>Admin auditada</td><td class="mono">9751458</td><td>Diana Milena Zarate Beltran</td></tr>
+              <tr><td>Principal asignador</td><td class="mono">9753945</td><td>Angie Paola Casallas Ortiz</td></tr>
+              <tr><td>Bot enrutador</td><td class="mono">9218425</td><td>Lia</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
-      <div style="display:flex;gap:2rem;margin-top:0.75rem;font-size:0.75rem;color:var(--muted);flex-wrap:wrap;">
-        <span><span style="display:inline-block;width:12px;height:12px;background:var(--navy);border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Día pico (Jun 23 — 7 casos)</span>
-        <span><span style="display:inline-block;width:12px;height:12px;background:var(--accent);border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Día normal</span>
-        <span style="margin-left:auto;">Semana 1 (Jun 1–7): 23 casos · Semana 2: 15 · Semana 3: 8 · Semana 4: 9</span>
+      <div class="card">
+        <div class="card-title">Tipos de ticket procesados por Diana</div>
+        <div class="dist-row">
+          <div class="dist-label">PQR RESTOBAR</div>
+          <div class="dist-bar-wrap"><div class="dist-bar" style="width:87%;background:var(--mid)">47</div></div>
+          <div class="dist-count">47</div>
+          <div class="dist-pct">87.0%</div>
+        </div>
+        <div class="dist-row">
+          <div class="dist-label">Sin ticket</div>
+          <div class="dist-bar-wrap"><div class="dist-bar" style="width:9.3%;background:#94A3B8">5</div></div>
+          <div class="dist-count">5</div>
+          <div class="dist-pct">9.3%</div>
+        </div>
+        <div class="dist-row">
+          <div class="dist-label">Revision Rsb</div>
+          <div class="dist-bar-wrap"><div class="dist-bar" style="width:1.9%;background:#CBD5E1">1</div></div>
+          <div class="dist-count">1</div>
+          <div class="dist-pct">1.9%</div>
+        </div>
+        <div class="dist-row">
+          <div class="dist-label">Diag. Rsb</div>
+          <div class="dist-bar-wrap"><div class="dist-bar" style="width:1.9%;background:#CBD5E1">1</div></div>
+          <div class="dist-count">1</div>
+          <div class="dist-pct">1.9%</div>
+        </div>
+        <div class="note">El inbox "Diagnóstico Restobar" (team 10111540) gestiona principalmente tickets de tipo "PQR RESTOBAR" (cambios de NIT, solicitudes, sugerencias escaladas). Solo 1 conversación es del tipo "Diagnostico Restobar" con SLA "Diagnostico" aplicado. Los estados de folio clásicos del flujo Diagnóstico no aplican a PQR RESTOBAR; la Sección 4 reporta los estados reales encontrados.</div>
       </div>
     </div>
   </div>
 
-  <!-- SECTION 2+3: NEVER MANAGED + STATE DISTRIBUTION -->
-  <div class="section-gap">
+  <!-- ═══ SECCIÓN 1: TIEMPOS ═══ -->
+  <div id="s1" class="section-gap">
+    <p class="section-title">Sección 1 — Tiempo de asignación a primera gestión</p>
     <div class="two-col">
+      <div class="card">
+        <div class="card-title">Estadísticos principales (n = 37 casos medibles con tiempo positivo)</div>
+        <div class="stat-grid">
+          <div><div class="stat-val">27:08</div><div class="stat-lbl">Promedio (HH:MM)</div></div>
+          <div><div class="stat-val">05:21</div><div class="stat-lbl">Mediana (HH:MM)</div></div>
+          <div><div class="stat-val" style="color:var(--ok)">00:00:01</div><div class="stat-lbl">Mínimo</div></div>
+          <div><div class="stat-val" style="color:var(--crit)">429:12:22</div><div class="stat-lbl">Máximo (outlier 17.9d)</div></div>
+          <div><div class="stat-val">~47:13</div><div class="stat-lbl">Percentil 90 (P90)</div></div>
+          <div></div>
+        </div>
+        <div class="summary-row">
+          <div class="summary-item"><div class="sv">37</div><div class="sl">Casos con tiempo medible</div></div>
+          <div class="summary-item"><div class="sv">8</div><div class="sl">Auto-gestionados (antes de asig.)</div></div>
+          <div class="summary-item"><div class="sv">9</div><div class="sl">Sin datos de tiempo</div></div>
+        </div>
+
+        <div style="margin-top:1rem">
+          <div class="card-title">Distribución por rango de tiempo</div>
+          <div class="dist-row">
+            <div class="dist-label">&lt; 1 hora</div>
+            <div class="dist-bar-wrap"><div class="dist-bar" style="width:35.1%;background:#10B981">13</div></div>
+            <div class="dist-count">13</div><div class="dist-pct">35.1%</div>
+          </div>
+          <div class="dist-row">
+            <div class="dist-label">1 – 4 h</div>
+            <div class="dist-bar-wrap"><div class="dist-bar" style="width:10.8%;background:#34D399">4</div></div>
+            <div class="dist-count">4</div><div class="dist-pct">10.8%</div>
+          </div>
+          <div class="dist-row">
+            <div class="dist-label">4 – 8 h</div>
+            <div class="dist-bar-wrap"><div class="dist-bar" style="width:5.4%;background:#6EE7B7">2</div></div>
+            <div class="dist-count">2</div><div class="dist-pct">5.4%</div>
+          </div>
+          <div class="dist-row">
+            <div class="dist-label">8 – 24 h</div>
+            <div class="dist-bar-wrap"><div class="dist-bar" style="width:27%;background:#F59E0B">10</div></div>
+            <div class="dist-count">10</div><div class="dist-pct">27.0%</div>
+          </div>
+          <div class="dist-row">
+            <div class="dist-label">24 – 48 h</div>
+            <div class="dist-bar-wrap"><div class="dist-bar" style="width:10.8%;background:#F97316">4</div></div>
+            <div class="dist-count">4</div><div class="dist-pct">10.8%</div>
+          </div>
+          <div class="dist-row">
+            <div class="dist-label">&gt; 48 h</div>
+            <div class="dist-bar-wrap"><div class="dist-bar" style="width:10.8%;background:#EF4444">4</div></div>
+            <div class="dist-count">4</div><div class="dist-pct">10.8%</div>
+          </div>
+        </div>
+      </div>
 
       <div>
-        <p class="section-title">Sección 2 — Casos sin gestión de Diana (6)</p>
-        <div class="card" style="padding:0">
+        <div class="card">
+          <div class="card-title">Top 10 casos más lentos (asignación → primera gestión)</div>
           <div class="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Título</th>
-                  <th>Estado</th>
-                  <th>Asignado</th>
-                </tr>
-              </thead>
+              <thead><tr><th>#</th><th>ID</th><th>Título</th><th>HH:MM:SS</th><th>Asig.</th><th>1ra acción</th></tr></thead>
               <tbody>
-                <tr class="stripe-crit">
-                  <td class="mono">…812106310</td>
-                  <td class="td-title" style="max-width:140px">Sug nueva comanda — GRUPO VALENCIA</td>
-                  <td><span class="chip chip-open">⚠ Submitted</span></td>
-                  <td>Sí — urgente</td>
+                <tr class="outlier-row stripe-crit">
+                  <td><strong>1</strong></td>
+                  <td class="mono">…537554895</td>
+                  <td class="td-title">GUACAMOLYN FOOD BRAND (NIT)</td>
+                  <td><strong style="color:var(--crit)">429:12:22</strong></td>
+                  <td>Jun 1</td><td>Jun 19</td>
                 </tr>
-                <tr class="stripe-ok">
-                  <td class="mono">…814913579</td>
-                  <td class="td-title" style="max-width:140px">Quitar pago — NAPOLES FRESAS</td>
-                  <td><span class="chip chip-ok">Resolved</span></td>
-                  <td>No</td>
-                </tr>
-                <tr class="stripe-ok">
-                  <td class="mono">…789529263</td>
-                  <td class="td-title" style="max-width:140px">Pago 3 meses — PAPASAURIOS</td>
-                  <td><span class="chip chip-ok">Resolved</span></td>
-                  <td>No</td>
-                </tr>
-                <tr class="stripe-ok">
-                  <td class="mono">…755114102</td>
-                  <td class="td-title" style="max-width:140px">Reportes históricos — Boxes Grupo</td>
-                  <td><span class="chip chip-ok">Resolved</span></td>
-                  <td>No</td>
-                </tr>
-                <tr class="stripe-ok">
-                  <td class="mono">…659588095</td>
-                  <td class="td-title" style="max-width:140px">Reportes históricos — Boxes Grupo</td>
-                  <td><span class="chip chip-ok">Resolved</span></td>
-                  <td>No</td>
-                </tr>
-                <tr class="stripe-ok">
-                  <td class="mono">…658593354</td>
-                  <td class="td-title" style="max-width:140px">Jesús Enrique Orozco</td>
-                  <td><span class="chip chip-ok">Resolved</span></td>
-                  <td>No</td>
-                </tr>
+                <tr class="stripe-crit"><td>2</td><td class="mono">…684227177</td><td class="td-title">Las Presitas wing (NIT)</td><td>82:20:41</td><td>Jun 10</td><td>Jun 13</td></tr>
+                <tr class="stripe-crit"><td>3</td><td class="mono">…683463491</td><td class="td-title">Las Presitas wing — 2do folio (NIT)</td><td>82:14:38</td><td>Jun 10</td><td>Jun 13</td></tr>
+                <tr class="stripe-warn"><td>4</td><td class="mono">…594629827</td><td class="td-title">BOMART (Sugerencia escalada)</td><td>66:34:21</td><td>Jun 6</td><td>Jun 9</td></tr>
+                <tr class="stripe-warn"><td>5</td><td class="mono">…554426949</td><td class="td-title">SANDWICHES (Sugerencia esc.)</td><td>47:12:52</td><td>Jun 2</td><td>Jun 4</td></tr>
+                <tr class="stripe-warn"><td>6</td><td class="mono">…548441925</td><td class="td-title">BODEGA COCINA ISLA (Diag)</td><td>47:08:23</td><td>Jun 2</td><td>Jun 4</td></tr>
+                <tr class="stripe-warn"><td>7</td><td class="mono">…703254206</td><td class="td-title">LA AZOTEA GASTROBAR (Sug)</td><td>40:46:21</td><td>Jun 12</td><td>Jun 13</td></tr>
+                <tr class="stripe-warn"><td>8</td><td class="mono">…784953736</td><td class="td-title">DON FIERRO POPAYÁN (NIT)</td><td>35:53:23</td><td>Jun 22</td><td>Jun 23</td></tr>
+                <tr><td>9</td><td class="mono">…563840449</td><td class="td-title">Barroco Restaurante (Sug)</td><td>21:30:42</td><td>Jun 3</td><td>Jun 4</td></tr>
+                <tr><td>10</td><td class="mono">…550300181</td><td class="td-title">QUILE STEAK (NIT)</td><td>21:06:28</td><td>Jun 2</td><td>Jun 3</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="alert-box alert-crit" style="margin-top:0.75rem">
+            <div class="alert-label">⚠ Outlier extremo</div>
+            ID 215474537554895 registra 17.9 días sin gestión. Sin este caso, el promedio sería ~6:06h. Requiere investigación inmediata.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SECCIÓN 2: SIN GESTIÓN ═══ -->
+  <div id="s2" class="section-gap">
+    <p class="section-title">Sección 2 — Casos asignados sin gestión de Diana (6 casos · 11.1%)</p>
+    <div class="card no-pad">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID conversación</th><th>Título</th><th>Estado actual</th><th>Fecha creación</th><th>¿Asignado a Diana?</th><th>Estado conv.</th></tr></thead>
+          <tbody>
+            <tr class="stripe-crit">
+              <td class="mono">215474812106310</td>
+              <td>SUGERENCIA NUEVA COMANDA — GRUPO VALENCIA ESCOBAR</td>
+              <td><span class="chip chip-open">Submitted</span></td>
+              <td>Jun 23</td>
+              <td><strong style="color:var(--crit)">Sí — urgente</strong></td>
+              <td><span class="chip chip-open">open</span></td>
+            </tr>
+            <tr class="stripe-ok"><td class="mono">215474814913579</td><td>QUITAR PAGO — NAPOLES FRESAS</td><td><span class="chip chip-ok">Resolved</span></td><td>Jun 23</td><td>No (null)</td><td><span class="chip chip-ok">closed</span></td></tr>
+            <tr class="stripe-ok"><td class="mono">215474789529263</td><td>Pago 3 meses no refleja — PAPASAURIOS</td><td><span class="chip chip-ok">Resolved</span></td><td>Jun 22</td><td>No (null)</td><td><span class="chip chip-ok">closed</span></td></tr>
+            <tr class="stripe-ok"><td class="mono">215474755114102</td><td>Reportes históricos — Boxes Grupo</td><td><span class="chip chip-ok">Resolved</span></td><td>Jun 18</td><td>No (null)</td><td><span class="chip chip-ok">closed</span></td></tr>
+            <tr class="stripe-ok"><td class="mono">215474659588095</td><td>Reportes históricos — Boxes Grupo</td><td><span class="chip chip-ok">Resolved</span></td><td>Jun 10</td><td>No (null)</td><td><span class="chip chip-ok">closed</span></td></tr>
+            <tr class="stripe-ok"><td class="mono">215474658593354</td><td>Jesús Enrique Orozco</td><td><span class="chip chip-ok">Resolved</span></td><td>Jun 10</td><td>No (null)</td><td><span class="chip chip-ok">closed</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="alert-box alert-crit" style="margin-top:0.75rem">
+      <div class="alert-label">⚠ Caso crítico activo</div>
+      ID 215474812106310 fue asignado explícitamente a Diana el Jun 23. Estado: "Submitted". Sin ninguna acción de Diana. Caso abierto — requiere atención inmediata.
+    </div>
+    <div class="note">5 de 6 casos estuvieron en el equipo pero nunca asignados directamente a Diana (resueltos por otros agentes del equipo). No representan riesgo operativo actual, pero sí oportunidades de mejora en rotación de carga.</div>
+  </div>
+
+  <!-- ═══ SECCIÓN 3: ESCALAMIENTO ═══ -->
+  <div id="s3" class="section-gap">
+    <p class="section-title">Sección 3 — Estadísticas de escalamiento</p>
+    <div class="two-col">
+      <div>
+        <div class="card" style="margin-bottom:1.25rem">
+          <div class="card-title">Por estado actual del ticket (54 casos)</div>
+          <div class="dist-row"><div class="dist-label">Resolved</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:81.5%;background:var(--ok)">44</div></div><div class="dist-count">44</div><div class="dist-pct">81.5%</div></div>
+          <div class="dist-row"><div class="dist-label">Sin ticket</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:9.3%;background:#94A3B8">5</div></div><div class="dist-count">5</div><div class="dist-pct">9.3%</div></div>
+          <div class="dist-row"><div class="dist-label">Esc. NIT</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:5.6%;background:var(--warn)">3</div></div><div class="dist-count">3</div><div class="dist-pct">5.6%</div></div>
+          <div class="dist-row"><div class="dist-label">Submitted</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:3.7%;background:var(--crit)">2</div></div><div class="dist-count">2</div><div class="dist-pct">3.7%</div></div>
+          <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+            <div class="card-title">Por prioridad</div>
+            <div class="dist-row"><div class="dist-label">Alta</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:50%;background:var(--navy)">27</div></div><div class="dist-count">27</div><div class="dist-pct">50.0%</div></div>
+            <div class="dist-row"><div class="dist-label">Normal</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:50%;background:#94A3B8">27</div></div><div class="dist-count">27</div><div class="dist-pct">50.0%</div></div>
+          </div>
+          <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+            <div class="card-title">Por estado de conversación</div>
+            <div class="dist-row"><div class="dist-label">closed</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:87%;background:var(--ok)">47</div></div><div class="dist-count">47</div><div class="dist-pct">87.0%</div></div>
+            <div class="dist-row"><div class="dist-label">open</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:13%;background:var(--warn)">7</div></div><div class="dist-count">7</div><div class="dist-pct">13.0%</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Principales temas de escalamiento (estimación por título)</div>
+          <div class="dist-row"><div class="dist-label" style="width:140px;text-align:left">Cambio de NIT</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:55.6%;background:var(--mid)">~30</div></div><div class="dist-count">~30</div><div class="dist-pct">~55.6%</div></div>
+          <div class="dist-row"><div class="dist-label" style="width:140px;text-align:left">Sug. escaladas</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:18.5%;background:var(--accent)">~10</div></div><div class="dist-count">~10</div><div class="dist-pct">~18.5%</div></div>
+          <div class="dist-row"><div class="dist-label" style="width:140px;text-align:left">Diag / PQR téc.</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:7.4%;background:#6EE7B7">~4</div></div><div class="dist-count">~4</div><div class="dist-pct">~7.4%</div></div>
+          <div class="dist-row"><div class="dist-label" style="width:140px;text-align:left">Solicitudes esp.</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:7.4%;background:#6EE7B7">~4</div></div><div class="dist-count">~4</div><div class="dist-pct">~7.4%</div></div>
+          <div class="dist-row"><div class="dist-label" style="width:140px;text-align:left">Sugerencias dir.</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:5.6%;background:#94A3B8">~3</div></div><div class="dist-count">~3</div><div class="dist-pct">~5.6%</div></div>
+          <div class="dist-row"><div class="dist-label" style="width:140px;text-align:left">Otros</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:5.6%;background:#94A3B8">~3</div></div><div class="dist-count">~3</div><div class="dist-pct">~5.6%</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card" style="margin-bottom:1.25rem">
+          <div class="card-title">Tickets abiertos pendientes (7 casos)</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>ID</th><th>Título</th><th>Estado ticket</th><th>Prior.</th></tr></thead>
+              <tbody>
+                <tr class="stripe-warn"><td class="mono">…764457625</td><td class="td-title">Cambio NIT — CANIBAL GROUP ENVIGADO</td><td><span class="chip chip-warn">Esc. NIT</span></td><td>normal</td></tr>
+                <tr class="stripe-warn"><td class="mono">…838056395</td><td class="td-title">Cambio NIT — Vibras burger</td><td><span class="chip chip-warn">Esc. NIT</span></td><td>normal</td></tr>
+                <tr class="stripe-warn"><td class="mono">…817596157</td><td class="td-title">Escalado NIT — [empresa]</td><td><span class="chip chip-warn">Esc. NIT</span></td><td>alta</td></tr>
+                <tr class="stripe-crit"><td class="mono">…812106310</td><td class="td-title">Sug. nueva comanda — GRUPO VALENCIA</td><td><span class="chip chip-open">Submitted</span></td><td>normal</td></tr>
+                <tr class="stripe-crit"><td class="mono">…835680140</td><td class="td-title">SUG — Cami Atelier</td><td><span class="chip chip-open">Submitted</span></td><td>normal</td></tr>
+                <tr><td class="mono">…814913579</td><td class="td-title">QUITAR PAGO — NAPOLES FRESAS</td><td>—</td><td>normal</td></tr>
+                <tr><td class="mono">…789529263</td><td class="td-title">Pago 3 meses — PAPASAURIOS</td><td>—</td><td>normal</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Principales asignadores de casos a Diana</div>
+          <div class="dist-row"><div class="dist-label-wide">Angie Paola Casallas Ortiz</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:40%;background:var(--navy)">18</div></div><div class="dist-count">18</div><div class="dist-pct">33.3%</div></div>
+          <div class="dist-row"><div class="dist-label-wide">Leydi Johanna Ruiz Garcia</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:13.3%;background:var(--accent)">6</div></div><div class="dist-count">6</div><div class="dist-pct">11.1%</div></div>
+          <div class="dist-row"><div class="dist-label-wide">Lisseth A. Graciano Cifuentes</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:8.9%;background:var(--accent)">4</div></div><div class="dist-count">4</div><div class="dist-pct">7.4%</div></div>
+          <div class="dist-row"><div class="dist-label-wide">Diana (autoasignación)</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:8.9%;background:#A78BFA">4</div></div><div class="dist-count">4</div><div class="dist-pct">7.4%</div></div>
+          <div class="dist-row"><div class="dist-label-wide">Paola A. Caballero Pedraza</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:6.7%;background:var(--accent)">3</div></div><div class="dist-count">3</div><div class="dist-pct">5.6%</div></div>
+          <div class="dist-row"><div class="dist-label-wide">Daniel A. Olier Diaz</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:6.7%;background:var(--accent)">3</div></div><div class="dist-count">3</div><div class="dist-pct">5.6%</div></div>
+          <div class="dist-row"><div class="dist-label-wide">Juan Pablo Gallego Gaona</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:4.4%;background:#94A3B8">2</div></div><div class="dist-count">2</div><div class="dist-pct">3.7%</div></div>
+          <div class="dist-row"><div class="dist-label-wide">Sin registrar / otros</div><div class="dist-bar-wrap"><div class="dist-bar" style="width:31%;background:#CBD5E1">14</div></div><div class="dist-count">14</div><div class="dist-pct">25.9%</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SECCIÓN 4: FOLIOS ═══ -->
+  <div id="s4" class="section-gap">
+    <p class="section-title">Sección 4 — Auditoría de folios</p>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Estados actuales de ticket (ticket_state)</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ticket_state</th><th>Cantidad</th><th>%</th></tr></thead>
+            <tbody>
+              <tr><td>resolved</td><td><strong>44</strong></td><td>81.5%</td></tr>
+              <tr><td>in_progress</td><td>3</td><td>5.6%</td></tr>
+              <tr><td>submitted</td><td>2</td><td>3.7%</td></tr>
+              <tr><td>null (sin ticket formal)</td><td>5</td><td>9.3%</td></tr>
+              <tr style="background:var(--ground)"><td><strong>Total</strong></td><td><strong>54</strong></td><td><strong>100%</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+          <div class="card-title">Estados etiqueta administrador (ticket_custom_state_admin_label)</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Label</th><th>Cantidad</th><th>%</th></tr></thead>
+              <tbody>
+                <tr><td>Resolved</td><td><strong>44</strong></td><td>81.5%</td></tr>
+                <tr><td>Escalado Cambio de NIT</td><td>3</td><td>5.6%</td></tr>
+                <tr><td>Submitted</td><td>2</td><td>3.7%</td></tr>
+                <tr><td>null (sin ticket)</td><td>5</td><td>9.3%</td></tr>
+                <tr style="background:var(--ground)"><td><strong>Total</strong></td><td><strong>54</strong></td><td><strong>100%</strong></td></tr>
               </tbody>
             </table>
           </div>
         </div>
       </div>
+      <div class="card">
+        <div class="card-title">Conversaciones con folio enlazado</div>
+        <div class="dist-row">
+          <div class="dist-label" style="width:120px;text-align:left">Con enlace</div>
+          <div class="dist-bar-wrap"><div class="dist-bar" style="width:92.6%;background:var(--ok)">50</div></div>
+          <div class="dist-count">50</div><div class="dist-pct">92.6%</div>
+        </div>
+        <div class="dist-row">
+          <div class="dist-label" style="width:120px;text-align:left">Sin enlace</div>
+          <div class="dist-bar-wrap"><div class="dist-bar" style="width:7.4%;background:#94A3B8">4</div></div>
+          <div class="dist-count">4</div><div class="dist-pct">7.4%</div>
+        </div>
+        <div class="note" style="margin-top:0.75rem">Los estados clásicos del flujo Diagnóstico (Devuelto a servicio, En Gestión por Diagnóstico, Escalado a mantenimiento, Escalado a producto, Escalado a producto Improvement, En curso, Esperando al cliente) <strong>no aparecen</strong> en el trabajo de Diana durante este período. Su carga es 87% PQR RESTOBAR, no casos de diagnóstico técnico nivel 2. Solo 1 de 54 tickets es tipo "Diagnostico Restobar".</div>
+      </div>
+    </div>
+  </div>
 
-      <div>
-        <p class="section-title">Sección 3–4 — Estados y tipología</p>
-        <div class="card">
-          <div class="card-title">Distribución de estado ticket (54 casos)</div>
-          <div class="dist-row">
-            <div class="dist-label">Resolved</div>
-            <div class="dist-bar-wrap"><div class="dist-bar" style="width:81.5%;background:var(--ok)">44</div></div>
-            <div class="dist-count">44</div>
-            <div class="dist-pct">81.5%</div>
-          </div>
-          <div class="dist-row">
-            <div class="dist-label">Esc. NIT</div>
-            <div class="dist-bar-wrap"><div class="dist-bar" style="width:5.6%;background:var(--warn)">3</div></div>
-            <div class="dist-count">3</div>
-            <div class="dist-pct">5.6%</div>
-          </div>
-          <div class="dist-row">
-            <div class="dist-label">Submitted</div>
-            <div class="dist-bar-wrap"><div class="dist-bar" style="width:3.7%;background:var(--crit)">2</div></div>
-            <div class="dist-count">2</div>
-            <div class="dist-pct">3.7%</div>
-          </div>
-          <div class="dist-row">
-            <div class="dist-label">Sin ticket</div>
-            <div class="dist-bar-wrap"><div class="dist-bar" style="width:9.3%;background:#94A3B8">5</div></div>
-            <div class="dist-count">5</div>
-            <div class="dist-pct">9.3%</div>
-          </div>
-
-          <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
-            <div class="card-title" style="margin-bottom:0.6rem">Tipo de ticket</div>
-            <div class="dist-row">
-              <div class="dist-label">PQR RESTOBAR</div>
-              <div class="dist-bar-wrap"><div class="dist-bar" style="width:87%;background:var(--mid)">47</div></div>
-              <div class="dist-count">47</div>
-              <div class="dist-pct">87.0%</div>
+  <!-- ═══ SECCIÓN 5: SLA ═══ -->
+  <div id="s5" class="section-gap">
+    <p class="section-title">Sección 5 — Cumplimiento de SLA</p>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">SLA de resolución (≤ 3 días = 259,200 segundos)</div>
+        <div class="gauge-row">
+          <div>
+            <div class="gauge-header">
+              <span class="gauge-name">SLA Resolución ≤3 días</span>
+              <span class="gauge-pct" style="color:var(--ok)">100%</span>
             </div>
-            <div class="dist-row">
-              <div class="dist-label">Otros/sin</div>
-              <div class="dist-bar-wrap"><div class="dist-bar" style="width:13%;background:#94A3B8">7</div></div>
-              <div class="dist-count">7</div>
-              <div class="dist-pct">13.0%</div>
-            </div>
-          </div>
-
-          <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
-            <div style="display:flex;gap:1.5rem;flex-wrap:wrap;">
-              <div>
-                <div style="font-size:0.72rem;color:var(--muted);margin-bottom:2px">Prioridad alta</div>
-                <div style="font-size:1.2rem;font-weight:700">27 <span style="font-size:0.8rem;color:var(--muted)">(50%)</span></div>
-              </div>
-              <div>
-                <div style="font-size:0.72rem;color:var(--muted);margin-bottom:2px">Abiertos pendientes</div>
-                <div style="font-size:1.2rem;font-weight:700;color:var(--warn)">7 <span style="font-size:0.8rem;color:var(--muted)">(13%)</span></div>
-              </div>
-              <div>
-                <div style="font-size:0.72rem;color:var(--muted);margin-bottom:2px">Con folio enlazado</div>
-                <div style="font-size:1.2rem;font-weight:700">50 <span style="font-size:0.8rem;color:var(--muted)">(92.6%)</span></div>
-              </div>
-            </div>
+            <div class="gauge-track"><div class="gauge-fill" style="width:100%;background:var(--ok)"></div></div>
+            <div class="gauge-meta">12/12 casos con datos de SLA · <strong style="color:var(--ok)">Meta cumplida</strong></div>
           </div>
         </div>
+        <div class="table-wrap" style="margin-top:1rem">
+          <table>
+            <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+            <tbody>
+              <tr><td>Casos con datos de SLA</td><td>12</td></tr>
+              <tr><td>Casos que cumplen ≤3 días</td><td><strong>12</strong></td></tr>
+              <tr><td>Tasa de cumplimiento</td><td><span class="chip chip-ok">100% ✓</span></td></tr>
+              <tr><td>Tiempo mínimo de cierre</td><td>491 seg (8:11 min)</td></tr>
+              <tr><td>Tiempo máximo de cierre</td><td>170,791 seg (47:26:31)</td></tr>
+              <tr><td>Tiempo promedio de cierre</td><td>24,456 seg (6:47:36)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note" style="margin-top:0.75rem">Solo 12 de 54 conversaciones tienen datos de time_to_first_close_seconds. Los tickets admin-iniciados (back-office) no registran este indicador en Intercom. Los 12 casos con datos son conversaciones con componente cliente visible.</div>
       </div>
 
+      <div class="card">
+        <div class="card-title">SLA de escalación interna (&lt;24h desde asignación a primera acción)</div>
+        <div class="gauge-row">
+          <div>
+            <div class="gauge-header">
+              <span class="gauge-name">SLA Escalación &lt;24h</span>
+              <span class="gauge-pct" style="color:var(--warn)">78.4%</span>
+            </div>
+            <div class="gauge-track"><div class="gauge-fill" style="width:78.4%;background:var(--warn)"></div></div>
+            <div class="gauge-meta">29/37 casos bajo 24h · Meta: 90% · <strong style="color:var(--crit)">Brecha: −11.6 pp</strong></div>
+          </div>
+        </div>
+        <div class="table-wrap" style="margin-top:1rem">
+          <table>
+            <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+            <tbody>
+              <tr><td>Casos medibles</td><td>37</td></tr>
+              <tr><td>Casos que cumplen &lt;24h</td><td><strong>29</strong></td></tr>
+              <tr><td>Casos que NO cumplen</td><td><strong style="color:var(--crit)">8</strong></td></tr>
+              <tr><td>Tasa de cumplimiento</td><td><span class="chip chip-warn">78.4% ⚠</span></td></tr>
+              <tr><td>Meta</td><td>90%</td></tr>
+              <tr><td>Brecha</td><td><strong style="color:var(--crit)">−11.6 pp</strong> (faltan 4 casos más bajo 24h)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-title" style="margin-top:1rem">8 casos que exceden 24h en primera gestión</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Título</th><th>Tiempo</th><th>Razón probable</th></tr></thead>
+            <tbody>
+              <tr class="stripe-crit"><td class="mono">…537554895</td><td class="td-title">GUACAMOLYN (NIT)</td><td style="color:var(--crit)">17.9 días</td><td>Caso extremo — posible omisión</td></tr>
+              <tr class="stripe-warn"><td class="mono">…684227177</td><td class="td-title">Las Presitas wing (NIT)</td><td>82h 21m</td><td>Cola de NIT acumulada</td></tr>
+              <tr class="stripe-warn"><td class="mono">…683463491</td><td class="td-title">Las Presitas wing (NIT)</td><td>82h 15m</td><td>Ídem caso anterior</td></tr>
+              <tr class="stripe-warn"><td class="mono">…594629827</td><td class="td-title">BOMART (Sug esc)</td><td>66h 34m</td><td>Sugerencia de baja prioridad</td></tr>
+              <tr><td class="mono">…554426949</td><td class="td-title">SANDWICHES (Sug esc)</td><td>47h 13m</td><td>Fin de semana probable</td></tr>
+              <tr><td class="mono">…548441925</td><td class="td-title">BODEGA COCINA ISLA</td><td>47h 08m</td><td>Ídem</td></tr>
+              <tr><td class="mono">…703254206</td><td class="td-title">LA AZOTEA (Sug)</td><td>40h 46m</td><td>Cola acumulada Jun 12–13</td></tr>
+              <tr><td class="mono">…784953736</td><td class="td-title">DON FIERRO POPAYÁN (NIT)</td><td>35h 53m</td><td>Caso de Jun 22</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- SECTION: ASSIGNORS -->
-  <div class="section-gap">
-    <p class="section-title">Principales asignadores de casos a Diana</p>
+  <!-- ═══ SECCIÓN 6: TEMPORAL ═══ -->
+  <div id="s6" class="section-gap">
+    <p class="section-title">Sección 6 — Distribución temporal</p>
     <div class="card">
-      <div class="card-title">Agente → Diana (por # casos asignados)</div>
-      <div class="dist-row">
-        <div class="dist-label" style="width:220px;text-align:left">Angie Paola Casallas Ortiz</div>
-        <div class="dist-bar-wrap"><div class="dist-bar" style="width:40%;background:var(--navy)">18</div></div>
-        <div class="dist-count">18</div>
-        <div class="dist-pct">33.3%</div>
+      <div class="card-title">Volumen diario de casos · Jun 1–25</div>
+      <div style="position:relative;">
+        <div class="timeline-chart" id="timeline"></div>
       </div>
-      <div class="dist-row">
-        <div class="dist-label" style="width:220px;text-align:left">Leydi Johanna Ruiz Garcia</div>
-        <div class="dist-bar-wrap"><div class="dist-bar" style="width:13.3%;background:var(--accent)">6</div></div>
-        <div class="dist-count">6</div>
-        <div class="dist-pct">11.1%</div>
+      <div style="display:flex;gap:2rem;margin-top:0.75rem;font-size:0.75rem;color:var(--muted);flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:12px;height:12px;background:var(--navy);border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Día pico (Jun 23 — 7 casos)</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:var(--accent);border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Día normal</span>
       </div>
-      <div class="dist-row">
-        <div class="dist-label" style="width:220px;text-align:left">Lisseth A. Graciano Cifuentes</div>
-        <div class="dist-bar-wrap"><div class="dist-bar" style="width:8.9%;background:var(--accent)">4</div></div>
-        <div class="dist-count">4</div>
-        <div class="dist-pct">7.4%</div>
+    </div>
+
+    <div class="two-col" style="margin-top:1.25rem">
+      <div class="card">
+        <div class="card-title">Volumen por día (tabla completa)</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fecha</th><th>Casos</th><th>Fecha</th><th>Casos</th></tr></thead>
+            <tbody>
+              <tr><td>Jun 1</td><td>5</td><td>Jun 14</td><td>2</td></tr>
+              <tr><td>Jun 2</td><td>6</td><td>Jun 15</td><td>0</td></tr>
+              <tr><td>Jun 3</td><td>3</td><td>Jun 16</td><td>2</td></tr>
+              <tr><td>Jun 4</td><td>4</td><td>Jun 17</td><td>1</td></tr>
+              <tr><td>Jun 5</td><td>2</td><td>Jun 18</td><td>2</td></tr>
+              <tr><td>Jun 6</td><td>2</td><td>Jun 19</td><td>1</td></tr>
+              <tr><td>Jun 7</td><td>1</td><td>Jun 20</td><td>1</td></tr>
+              <tr><td>Jun 8</td><td>1</td><td>Jun 21</td><td>1</td></tr>
+              <tr><td>Jun 9</td><td>4</td><td>Jun 22</td><td>4</td></tr>
+              <tr><td>Jun 10</td><td>0</td><td><strong>Jun 23</strong></td><td><strong>7 ← pico</strong></td></tr>
+              <tr><td>Jun 11</td><td>5</td><td>Jun 24</td><td>2</td></tr>
+              <tr><td>Jun 12</td><td>3</td><td>Jun 25</td><td>0</td></tr>
+              <tr><td>Jun 13</td><td>0</td><td><strong>Total</strong></td><td><strong>54</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="dist-row">
-        <div class="dist-label" style="width:220px;text-align:left">Diana (autoasignación)</div>
-        <div class="dist-bar-wrap"><div class="dist-bar" style="width:8.9%;background:#A78BFA">4</div></div>
-        <div class="dist-count">4</div>
-        <div class="dist-pct">7.4%</div>
-      </div>
-      <div class="dist-row">
-        <div class="dist-label" style="width:220px;text-align:left">Paola A. Caballero Pedraza</div>
-        <div class="dist-bar-wrap"><div class="dist-bar" style="width:6.7%;background:var(--accent)">3</div></div>
-        <div class="dist-count">3</div>
-        <div class="dist-pct">5.6%</div>
-      </div>
-      <div class="dist-row">
-        <div class="dist-label" style="width:220px;text-align:left">Daniel A. Olier Diaz</div>
-        <div class="dist-bar-wrap"><div class="dist-bar" style="width:6.7%;background:var(--accent)">3</div></div>
-        <div class="dist-count">3</div>
-        <div class="dist-pct">5.6%</div>
-      </div>
-      <div class="dist-row">
-        <div class="dist-label" style="width:220px;text-align:left">Sin registrar / otros</div>
-        <div class="dist-bar-wrap"><div class="dist-bar" style="width:31%;background:#94A3B8">14</div></div>
-        <div class="dist-count">14</div>
-        <div class="dist-pct">25.9%</div>
+      <div class="card">
+        <div class="card-title">Volumen semanal</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Semana</th><th>Período</th><th>Casos</th><th>%</th></tr></thead>
+            <tbody>
+              <tr class="stripe-crit"><td><strong>Semana 1</strong></td><td>Jun 1–7</td><td><strong>23</strong></td><td>42.6%</td></tr>
+              <tr><td>Semana 2</td><td>Jun 8–14</td><td>15</td><td>27.8%</td></tr>
+              <tr><td>Semana 3</td><td>Jun 15–21</td><td>8</td><td>14.8%</td></tr>
+              <tr><td>Semana 4</td><td>Jun 22–25</td><td>9</td><td>16.7%</td></tr>
+              <tr style="background:var(--ground)"><td><strong>Total</strong></td><td></td><td><strong>55</strong></td><td><strong>100%</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="alert-box alert-warn" style="margin-top:0.75rem">
+          <div class="alert-label">Patrón de carga</div>
+          La Semana 1 (Jun 1–7) absorbe el 42.6% del volumen mensual. El flujo cae drásticamente en semanas 3–4. Investigar si hubo cambio operativo, vacaciones o redistribución de carga.
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- SECTION 8: FINDINGS -->
-  <div class="section-gap">
+  <!-- ═══ SECCIÓN 7: AUTOGESTIÓN ═══ -->
+  <div id="s7" class="section-gap">
+    <p class="section-title">Sección 7 — Tickets auto-gestionados por Diana</p>
+    <div class="card no-pad">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Título</th><th>Tipo de ticket</th><th>Estado</th><th>Empresa</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">215474803873209</td><td>Sug esc — Fatness — Puntos de clientes</td><td>PQR RESTOBAR</td><td><span class="chip chip-ok">resolved</span></td><td>null</td></tr>
+            <tr class="stripe-crit"><td class="mono">215474835680140</td><td>SUG — Cami Atelier</td><td>PQR RESTOBAR</td><td><span class="chip chip-open">submitted (abierto)</span></td><td>null</td></tr>
+            <tr><td class="mono">215474722661119</td><td>Sug esc — EL BOTELLON — Escanear productos</td><td>PQR RESTOBAR</td><td><span class="chip chip-ok">resolved</span></td><td>EL BOTELLON</td></tr>
+            <tr><td class="mono">215474659451053</td><td>SUG — SANDWICHES DONDE MISTER S.A.S.</td><td>Revision Restobar</td><td><span class="chip chip-ok">resolved</span></td><td>SANDWICHES DONDE MISTER SAS</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="alert-box alert-warn" style="margin-top:0.75rem">
+      <div class="alert-label">Pendiente activo</div>
+      ID 215474835680140 (SUG — Cami Atelier) creado Jun 24, estado "Submitted". Sin avance desde la creación.
+    </div>
+  </div>
+
+  <!-- ═══ SECCIÓN 8: HALLAZGOS ═══ -->
+  <div id="s8" class="section-gap">
     <p class="section-title">Sección 8 — Hallazgos inteligentes y recomendaciones</p>
     <div class="findings-grid">
       <div class="finding-card f-crit">
@@ -865,7 +746,7 @@
       </div>
       <div class="finding-card f-warn">
         <div class="finding-tag tag-warn">⚠ Advertencia</div>
-        <div class="finding-title">Concentración excesiva de asignaciones: Angie (33%)</div>
+        <div class="finding-title">Concentración excesiva: Angie asigna 33% de los casos</div>
         <div class="finding-body">Angie Paola Casallas Ortiz asigna 1 de cada 3 casos. Alta dependencia de una sola fuente. Si ella está ausente, el flujo de asignación a Diana se interrumpe o llega sin registrar (9 casos sin assignor documentado).</div>
       </div>
       <div class="finding-card f-blue">
@@ -876,25 +757,70 @@
       <div class="finding-card f-blue">
         <div class="finding-tag tag-blue">💡 KB / Proceso</div>
         <div class="finding-title">55% son cambios de NIT — estandarizar protocolo</div>
-        <div class="finding-body">30 de 54 casos son solicitudes de cambio de NIT/razón social. Es el flujo más repetitivo. Un checklist estandarizado en KB y una plantilla de respuesta reduciría el tiempo promedio de gestión y los errores de documentación.</div>
+        <div class="finding-body">~30 de 54 casos son solicitudes de cambio de NIT/razón social. Es el flujo más repetitivo. Un checklist estandarizado en KB y una plantilla de respuesta reduciría el tiempo promedio de gestión y los errores de documentación.</div>
       </div>
-      <div class="finding-card f-ok">
-        <div class="finding-tag tag-ok">✅ Fortaleza</div>
-        <div class="finding-title">SLA resolución: 100% en datos disponibles</div>
-        <div class="finding-body">Los 12 casos con datos de tiempo_to_first_close completos cumplen el objetivo de ≤3 días (259,200 s). Promedio de cierre: 6h 47m. Indica que cuando Diana gestiona, resuelve dentro del SLA.</div>
+      <div class="finding-card f-blue">
+        <div class="finding-tag tag-blue">💡 Automatización FIN</div>
+        <div class="finding-title">Auto-escalación de tickets "Submitted" después de 48h</div>
+        <div class="finding-body">Los tickets que permanecen en estado "Submitted" sin actividad deberían ser reasignados automáticamente a cola general o al supervisor. Hay 2 activos actualmente en este estado sin avance.</div>
       </div>
       <div class="finding-card f-ok">
         <div class="finding-tag tag-ok">✅ Fortaleza</div>
         <div class="finding-title">Respuesta inmediata en 35% de los casos</div>
-        <div class="finding-body">13 de 37 casos medibles fueron gestionados en menos de 1 hora desde la asignación. Diana responde con agilidad cuando los casos llegan en horario activo — la mediana de 5:21h es sólida si se excluye el outlier de 17.9 días.</div>
+        <div class="finding-body">13 de 37 casos medibles fueron gestionados en menos de 1 hora desde la asignación. SLA resolución al 100% (12/12). La mediana de 5:21h es sólida excluyendo el outlier — indica capacidad de respuesta ágil en horario activo.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ APÉNDICE ═══ -->
+  <div id="apendice" class="section-gap">
+    <p class="section-title">Apéndice — Identificadores técnicos</p>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-title">Entidades de la auditoría</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Elemento</th><th>Valor</th></tr></thead>
+            <tbody>
+              <tr><td>Admin ID Diana</td><td class="mono">9751458</td></tr>
+              <tr><td>Email Diana</td><td class="mono">dzarateb@loggro.com</td></tr>
+              <tr><td>Team ID Diagnóstico Restobar</td><td class="mono">10111540</td></tr>
+              <tr><td>Team ID Restobar nivel 1</td><td class="mono">9246314</td></tr>
+              <tr><td>SLA ID</td><td>Diagnostico · resolución 259,200 seg</td></tr>
+              <tr><td>Bot enrutador</td><td>Lia (admin 9218425)</td></tr>
+              <tr><td>Rango Unix período</td><td class="mono">1780272000 – 1782450000</td></tr>
+              <tr><td>Total conversaciones recuperadas</td><td>54</td></tr>
+              <tr><td>Herramienta</td><td>Intercom MCP API</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Mapa de admins identificados</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Admin ID</th><th>Nombre</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">9218425</td><td>Lia (bot)</td></tr>
+              <tr><td class="mono">9744830</td><td>Paola Andrea Caballero Pedraza</td></tr>
+              <tr><td class="mono">9745007</td><td>Lisseth Andrea Graciano Cifuentes</td></tr>
+              <tr><td class="mono">9745853</td><td>Lina Marcela Ruiz Alvarez</td></tr>
+              <tr style="background:#EFF6FF"><td class="mono"><strong>9751458</strong></td><td><strong>Diana Milena Zarate Beltran ← auditada</strong></td></tr>
+              <tr><td class="mono">9753945</td><td>Angie Paola Casallas Ortiz</td></tr>
+              <tr><td class="mono">9766803</td><td>Daniel Alberto Olier Diaz</td></tr>
+              <tr><td class="mono">9829168</td><td>Laura Camila Velez Rivera</td></tr>
+              <tr><td class="mono">9863338</td><td>Manuela Muñoz Isaza</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- FOOTER -->
   <div class="footer">
-    <span><strong>FIN Architect v1.0</strong> — Auditoría generada automáticamente</span>
-    <span>Fuente: Intercom MCP · Workspace Loggro (lux30cua)</span>
+    <span><strong>FIN Architect v1.0</strong> — Auditoría generada automáticamente · 26 jun 2026</span>
+    <span>Fuente: Intercom MCP · Workspace Loggro</span>
     <span>Admin auditada: dzarateb@loggro.com · ID 9751458</span>
     <span>Team: 10111540 · SLA Diagnostico (259,200 s resolución)</span>
     <span>Sin estimaciones · Sin datos inventados · Métricas nulas = limitación de API</span>
@@ -903,7 +829,6 @@
 </div>
 
 <script>
-// Timeline bar chart
 const data = [
   {d:'1',v:5},{d:'2',v:6},{d:'3',v:3},{d:'4',v:4},{d:'5',v:2},
   {d:'6',v:2},{d:'7',v:1},{d:'8',v:1},{d:'9',v:4},{d:'10',v:0},
@@ -913,28 +838,20 @@ const data = [
 ];
 const maxV = Math.max(...data.map(x=>x.v));
 const container = document.getElementById('timeline');
-const barH = 88; // available height for bars
-
+const barH = 88;
 data.forEach(item => {
   const col = document.createElement('div');
   col.className = 'timeline-col';
-
   const cnt = document.createElement('div');
   cnt.className = 'timeline-count';
   cnt.textContent = item.v > 0 ? item.v : '';
-
   const bar = document.createElement('div');
-  bar.className = 'timeline-bar' + (item.v === 0 ? ' zero' : '') + (item.v === maxV ? ' peak' : '');
-  const h = item.v === 0 ? 4 : Math.max(8, Math.round((item.v / maxV) * barH));
-  bar.style.height = h + 'px';
-
+  bar.className = 'timeline-bar' + (item.v===0?' zero':'') + (item.v===maxV?' peak':'');
+  bar.style.height = (item.v===0?4:Math.max(8,Math.round((item.v/maxV)*barH)))+'px';
   const lbl = document.createElement('div');
   lbl.className = 'timeline-label';
   lbl.textContent = item.d;
-
-  col.appendChild(cnt);
-  col.appendChild(bar);
-  col.appendChild(lbl);
+  col.appendChild(cnt); col.appendChild(bar); col.appendChild(lbl);
   container.appendChild(col);
 });
 </script>
