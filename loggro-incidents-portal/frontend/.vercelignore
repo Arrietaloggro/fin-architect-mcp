@@ -1,0 +1,5 @@
+# Exclude backend and root-level files from Vercel deployment
+../backend
+../DEPLOYMENT_GUIDE.md
+../ARCHITECTURE.md
+../README.md
