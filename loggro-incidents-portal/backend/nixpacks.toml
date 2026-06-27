@@ -1,8 +1,12 @@
-[phases.build]
-cmds = ["npm ci", "npm run build"]
-
 [phases.setup]
 nixPkgs = ["nodejs_20"]
+
+[phases.build]
+cmds = [
+  "npm ci",
+  "npm run build",
+  "mkdir -p /data"
+]
 
 [start]
 cmd = "node dist/server.js"

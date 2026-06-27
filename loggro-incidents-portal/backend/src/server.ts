@@ -4,6 +4,7 @@ import { config } from './config';
 import { logger } from './utils/logger';
 import { runMigrations } from './database/migrations';
 import { closeDb } from './database/connection';
+import { runIntercomSync } from './services/intercomDiscovery';
 
 function validateStartup(): void {
   const warnings: string[] = [];
@@ -45,6 +46,23 @@ async function main() {
       logger.info('Server started', { port: config.port, env: config.env });
       logger.info(`Health:  http://localhost:${config.port}/health`);
       logger.info(`API:     http://localhost:${config.port}/api`);
+
+      // Non-blocking Intercom sync on startup (when token is configured)
+      if (config.intercom.accessToken) {
+        runIntercomSync(config.intercom.accessToken, 'startup')
+          .then((result) => {
+            if (result.status === 'success') {
+              logger.info('Startup Intercom sync completed', {
+                changes: result.changes.length,
+                ticketTypes: result.ticketTypes.length,
+                durationMs: result.durationMs,
+              });
+            } else {
+              logger.warn('Startup Intercom sync failed', { error: result.error });
+            }
+          })
+          .catch((err: Error) => logger.warn('Startup Intercom sync error', { error: err.message }));
+      }
     });
 
     // Graceful shutdown — handles Railway SIGTERM and Ctrl+C

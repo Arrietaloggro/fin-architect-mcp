@@ -8,5 +8,23 @@ healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
-[[services]]
-name = "loggro-incidents-portal-backend"
+# ── Required environment variables (set in Railway dashboard) ─────────────────
+# NODE_ENV=production
+# PORT=3001                          (Railway injects $PORT automatically)
+# DATABASE_PATH=/data/portal.db      (use a Railway Volume mounted at /data)
+# INTERCOM_ACCESS_TOKEN=<token>
+# INTERCOM_API_VERSION=2.11
+# CORS_ORIGIN=https://<your-vercel-app>.vercel.app
+# CSRF_SECRET=<random 64-char hex>
+# ADMIN_API_KEY=<random 48-char hex>
+# ALLOWED_EMAIL_DOMAIN=loggro.com
+# LOG_LEVEL=info
+# MAX_FILE_SIZE_MB=10
+# MAX_FILES_PER_REQUEST=5
+# RATE_LIMIT_WINDOW_MS=900000
+# RATE_LIMIT_MAX_REQUESTS=5
+#
+# ── Volume ────────────────────────────────────────────────────────────────────
+# Create a Railway Volume and mount it at /data to persist the SQLite database.
+# Without a volume, the database is reset on every deploy.
+# Railway dashboard: Service → Settings → Volumes → Add Volume → Mount path: /data
