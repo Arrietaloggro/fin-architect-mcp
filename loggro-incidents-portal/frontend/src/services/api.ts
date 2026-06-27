@@ -1,10 +1,24 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { PortalConfig, TicketFormData, TicketResult } from '../types';
 
 const api = axios.create({
   baseURL: '/api',
   timeout: 30000,
 });
+
+// Response interceptor: normalize error messages
+api.interceptors.response.use(
+  (res) => res,
+  (err: AxiosError<{ error?: string }>) => {
+    if (err.code === 'ECONNABORTED') {
+      throw new Error('La solicitud tardó demasiado. Verifica tu conexión e intenta nuevamente.');
+    }
+    if (!err.response) {
+      throw new Error('No se pudo conectar con el servidor. Verifica tu conexión a Internet.');
+    }
+    throw err;
+  }
+);
 
 let csrfToken: string | null = null;
 
@@ -14,6 +28,15 @@ async function getCsrfToken(): Promise<string> {
   csrfToken = res.data.csrfToken;
   return csrfToken;
 }
+
+// Invalidate CSRF token on any 403 so the next request gets a fresh one
+api.interceptors.response.use(
+  (res) => res,
+  (err: AxiosError) => {
+    if (err.response?.status === 403) csrfToken = null;
+    throw err;
+  }
+);
 
 export async function fetchPortalConfig(): Promise<PortalConfig> {
   const res = await api.get<PortalConfig>('/config');
@@ -46,25 +69,27 @@ export async function submitTicket(formData: TicketFormData): Promise<TicketResu
     },
   });
 
-  // Invalidate token after use
+  // Invalidate token after successful use (one-time use)
   csrfToken = null;
   return res.data;
 }
 
-// Admin API
+// Admin API — separate axios instance (no CSRF needed, uses Bearer token)
+const adminAxios = axios.create({ baseURL: '/api', timeout: 15000 });
+
 export const adminApi = {
   getConfig: (key: string) =>
-    axios.get('/api/admin/config', { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+    adminAxios.get('/admin/config', { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
 
-  updateConfig: (config: unknown, key: string) =>
-    axios.put('/api/admin/config', config, { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+  updateConfig: (cfg: unknown, key: string) =>
+    adminAxios.put('/admin/config', cfg, { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
 
   patchSection: (section: string, data: unknown, key: string) =>
-    axios.patch(`/api/admin/config/${section}`, data, { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+    adminAxios.patch(`/admin/config/${section}`, data, { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
 
   getHistory: (params: Record<string, unknown>, key: string) =>
-    axios.get('/api/admin/history', { params, headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+    adminAxios.get('/admin/history', { params, headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
 
   getStats: (key: string) =>
-    axios.get('/api/admin/stats', { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+    adminAxios.get('/admin/stats', { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
 };

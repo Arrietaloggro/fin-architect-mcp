@@ -13,8 +13,14 @@ export function getConfig(req: Request, res: Response): void {
 
 export function updateConfig(req: Request, res: Response): void {
   try {
-    PortalConfigModel.set(req.body as PortalConfigData);
-    logger.info('Portal config updated via admin dashboard');
+    const data = req.body as PortalConfigData;
+    // Basic shape validation
+    if (!data.products || !data.requestTypes || !data.priorities || !data.teams) {
+      res.status(400).json({ error: 'Configuración inválida: faltan secciones requeridas (products, requestTypes, priorities, teams).' });
+      return;
+    }
+    PortalConfigModel.set(data);
+    logger.info('Portal config updated via admin dashboard', { requestId: req.requestId });
     res.json({ success: true, config: PortalConfigModel.get() });
   } catch (err) {
     res.status(400).json({ error: 'Configuración inválida.' });
@@ -24,8 +30,13 @@ export function updateConfig(req: Request, res: Response): void {
 export function patchSection(section: keyof PortalConfigData) {
   return (req: Request, res: Response): void => {
     try {
-      const updated = PortalConfigModel.patch({ [section]: req.body } as Partial<PortalConfigData>);
-      logger.info(`Admin patched config section: ${section}`);
+      if (!Array.isArray(req.body)) {
+        res.status(400).json({ error: `El cuerpo de la solicitud debe ser un array para la sección ${section}.` });
+        return;
+      }
+      const update: Partial<PortalConfigData> = { [section]: req.body } as Partial<PortalConfigData>;
+      const updated = PortalConfigModel.patch(update);
+      logger.info(`Admin patched config section: ${section}`, { requestId: req.requestId });
       res.json({ success: true, [section]: updated[section] });
     } catch (err) {
       res.status(400).json({ error: `Error actualizando ${section}.` });
@@ -36,9 +47,15 @@ export function patchSection(section: keyof PortalConfigData) {
 export function getHistory(req: Request, res: Response): void {
   try {
     const { page, limit, product, status, startDate, endDate, email } = req.query;
+    const pageNum = page ? parseInt(page as string, 10) : 1;
+    const limitNum = Math.min(limit ? parseInt(limit as string, 10) : 20, 100); // max 100 per page
+    if (isNaN(pageNum) || pageNum < 1 || isNaN(limitNum) || limitNum < 1) {
+      res.status(400).json({ error: 'Parámetros de paginación inválidos.' });
+      return;
+    }
     const result = TicketHistoryModel.findAll({
-      page: page ? parseInt(page as string) : 1,
-      limit: limit ? parseInt(limit as string) : 20,
+      page: pageNum,
+      limit: limitNum,
       product: product as string | undefined,
       status: status as string | undefined,
       startDate: startDate as string | undefined,
@@ -52,7 +69,9 @@ export function getHistory(req: Request, res: Response): void {
 }
 
 export function getHistoryById(req: Request, res: Response): void {
-  const record = TicketHistoryModel.findById(parseInt(req.params.id));
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'ID inválido.' }); return; }
+  const record = TicketHistoryModel.findById(id);
   if (!record) { res.status(404).json({ error: 'Registro no encontrado.' }); return; }
   res.json(record);
 }
