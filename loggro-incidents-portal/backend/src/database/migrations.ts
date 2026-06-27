@@ -3,6 +3,80 @@ import { logger } from '../utils/logger';
 import { config } from '../config';
 
 const SCHEMA = `
+-- ── Intercom live configuration (auto-synced) ─────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS intercom_workspace (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  region       TEXT,
+  timezone     TEXT,
+  raw_json     TEXT,
+  synced_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS intercom_ticket_types (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  description     TEXT,
+  icon            TEXT,
+  archived        INTEGER DEFAULT 0,
+  product_key     TEXT,
+  attributes_json TEXT,
+  raw_json        TEXT,
+  first_seen_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at      DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS intercom_teams (
+  id            TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  raw_json      TEXT,
+  first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at    DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS intercom_admins (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL,
+  email          TEXT NOT NULL,
+  is_token_owner INTEGER DEFAULT 0,
+  raw_json       TEXT,
+  first_seen_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at     DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS intercom_custom_attributes (
+  id            TEXT PRIMARY KEY,
+  model         TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  full_name     TEXT,
+  label         TEXT,
+  data_type     TEXT,
+  description   TEXT,
+  options_json  TEXT,
+  raw_json      TEXT,
+  first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at    DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS intercom_sync_log (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  finished_at  DATETIME,
+  status       TEXT NOT NULL DEFAULT 'running',
+  triggered_by TEXT DEFAULT 'manual',
+  changes_json TEXT,
+  error_message TEXT,
+  duration_ms  INTEGER
+);
+
+-- ── Tickets & portal config ────────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS ticket_history (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,

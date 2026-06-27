@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { PortalConfigModel, PortalConfigData } from '../models/PortalConfig';
 import { TicketHistoryModel } from '../models/TicketHistory';
+import { runIntercomSync, getLatestSyncStatus, getSyncHistory } from '../services/intercomDiscovery';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 
 export function getConfig(req: Request, res: Response): void {
@@ -81,5 +83,67 @@ export function getStats(req: Request, res: Response): void {
     res.json(TicketHistoryModel.getStats());
   } catch (err) {
     res.status(500).json({ error: 'Error calculando estadísticas.' });
+  }
+}
+
+// ─── Intercom sync endpoints ──────────────────────────────────────────────────
+
+export function getIntercomSyncStatus(req: Request, res: Response): void {
+  try {
+    const status = getLatestSyncStatus();
+    res.json(status ?? { lastSync: null, workspace: null, ticketTypes: [], teams: [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Error consultando estado de sincronización.' });
+  }
+}
+
+export function getIntercomSyncHistory(req: Request, res: Response): void {
+  try {
+    const limit = Math.min(parseInt((req.query.limit as string) ?? '20', 10), 100);
+    const logs = getSyncHistory(limit);
+    res.json({
+      logs: logs.map((l) => ({
+        id: l.id,
+        startedAt: l.started_at,
+        finishedAt: l.finished_at,
+        status: l.status,
+        triggeredBy: l.triggered_by,
+        changesCount: l.changes_json ? (JSON.parse(l.changes_json) as unknown[]).length : 0,
+        changes: l.changes_json ? JSON.parse(l.changes_json) : [],
+        error: l.error_message,
+        durationMs: l.duration_ms,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error consultando historial de sincronización.' });
+  }
+}
+
+export async function triggerIntercomSync(req: Request, res: Response): Promise<void> {
+  const token = config.intercom.accessToken;
+  if (!token) {
+    res.status(503).json({
+      error: 'INTERCOM_ACCESS_TOKEN no configurado. Ejecuta: npm run intercom:sync',
+    });
+    return;
+  }
+
+  try {
+    logger.info('Intercom sync triggered via API', { requestId: req.requestId });
+    const result = await runIntercomSync(token, 'api');
+    res.json({
+      status: result.status,
+      logId: result.logId,
+      durationMs: result.durationMs,
+      changesCount: result.changes.length,
+      changes: result.changes,
+      workspace: result.workspace,
+      ticketTypesCount: result.ticketTypes.length,
+      teamsCount: result.teams.length,
+      adminsCount: result.admins.length,
+      error: result.error,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error durante la sincronización.' });
   }
 }

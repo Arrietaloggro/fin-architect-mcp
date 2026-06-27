@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "intercom:discover": "ts-node --transpile-only src/scripts/intercom-discover.ts",
+    "intercom:sync": "ts-node --transpile-only src/scripts/intercom-sync.ts",
     "intercom:test": "ts-node --transpile-only src/scripts/intercom-test.ts",
     "validate": "ts-node --transpile-only src/tests/validate.ts"
   },

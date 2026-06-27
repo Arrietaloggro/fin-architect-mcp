@@ -92,4 +92,13 @@ export const adminApi = {
 
   getStats: (key: string) =>
     adminAxios.get('/admin/stats', { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+
+  getIntercomStatus: (key: string) =>
+    adminAxios.get('/admin/intercom/status', { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+
+  getIntercomSyncHistory: (key: string, limit = 20) =>
+    adminAxios.get('/admin/intercom/sync-history', { params: { limit }, headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
+
+  triggerIntercomSync: (key: string) =>
+    adminAxios.post('/admin/intercom/sync', {}, { headers: { Authorization: `Bearer ${key}` } }).then((r) => r.data),
 };

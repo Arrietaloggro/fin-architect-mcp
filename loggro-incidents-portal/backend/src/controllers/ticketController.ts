@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { intercomService } from '../services/intercomService';
 import { TicketHistoryModel } from '../models/TicketHistory';
 import { PortalConfigModel } from '../models/PortalConfig';
+import { getTicketTypeIdForProduct } from '../services/intercomDiscovery';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -73,10 +74,14 @@ export async function createTicket(req: Request, res: Response): Promise<void> {
   });
 
   try {
-    // Get ticket type ID from dynamic config
+    // Get ticket type ID: SQLite (from intercom:sync) → portal config → env var
     const portalConfig = PortalConfigModel.get();
     const productConfig = portalConfig.products.find((p) => p.id === product);
-    const ticketTypeId = productConfig?.intercomTicketTypeId || config.intercom.ticketTypes[product] || '';
+    const ticketTypeId =
+      getTicketTypeIdForProduct(product) ||
+      productConfig?.intercomTicketTypeId ||
+      config.intercom.ticketTypes[product] ||
+      '';
 
     if (!config.intercom.accessToken) {
       throw new Error('INTERCOM_ACCESS_TOKEN no configurado. Configura las variables de entorno.');
