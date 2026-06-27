@@ -1,6 +1,7 @@
-# FIN Architect Enterprise — Arquitectura de Producto v1.0
+# FIN Architect Enterprise — Arquitectura de Producto v1.1
 
-*Blueprint oficial | Fase 5 | 2026-06-26*
+*Blueprint oficial | Fase 5 — actualizado Fase 6 | 2026-06-26*  
+*v1.1: incorpora CSAT Improvement Engine como módulo estratégico obligatorio*
 
 ---
 
@@ -14,8 +15,9 @@
 6. [FIN Intelligence Score](#6-fin-intelligence-score)
 7. [Sistema de Recomendaciones](#7-sistema-de-recomendaciones)
 8. [Sistema de Auditorías Automáticas](#8-sistema-de-auditorías-automáticas)
-9. [Roadmap](#9-roadmap)
-10. [Conclusión](#10-conclusión)
+9. [CSAT Improvement Engine](#9-csat-improvement-engine)
+10. [Roadmap](#10-roadmap)
+11. [Conclusión](#11-conclusión)
 
 ---
 
@@ -57,6 +59,7 @@ No audita conversaciones individuales. Audita el sistema que las generó.
 3. **Accionable sobre informativo.** Cada sección termina con una acción concreta.
 4. **Multi-producto.** Restobar, Pymes, Nómina, Alojamientos coexisten en el mismo sistema.
 5. **Evolutivo.** El sistema aprende del historial. La semana 10 sabe más que la semana 1.
+6. **CSAT como norte.** Toda optimización técnica se mide en último término por su impacto en la satisfacción del cliente. El CSAT es el objetivo estratégico principal del producto.
 
 ---
 
@@ -157,10 +160,12 @@ El Dashboard principal es la pantalla de entrada de FIN Architect Enterprise. Co
 ║  FIN ARCHITECT ENTERPRISE                          Restobar ▾  Últimos 30d ▾ ║
 ╠══════════════════════════════════════════════════════════════════════════════╣
 ║                                                                              ║
-║  FIN INTELLIGENCE SCORE                                                      ║
-║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
-║  │   62 / 100   REGULAR   ▼ -4 vs mes anterior   ◎ Target: 75             │ ║
-║  └─────────────────────────────────────────────────────────────────────────┘ ║
+║  INDICADORES MAESTROS                                                        ║
+║  ┌──────────────────────────────────────┐ ┌───────────────────────────────┐ ║
+║  │  FIN INTELLIGENCE SCORE              │ │  PREDICTED CSAT SCORE         │ ║
+║  │  62 / 100  REGULAR  ▼ -4 vs ant.    │ │  58 / 100  🔴  ▼ -6 vs ant.  │ ║
+║  │  ◎ Target: 75                        │ │  ◎ Target: 80                 │ ║
+║  └──────────────────────────────────────┘ └───────────────────────────────┘ ║
 ║                                                                              ║
 ║  FILA 1 — SALUD DEL SISTEMA                                                  ║
 ║  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        ║
@@ -1037,102 +1042,720 @@ FIN Architect Enterprise ejecuta auditorías programadas y bajo demanda. Cada au
 
 ---
 
-## 9. Roadmap
+## 9. CSAT Improvement Engine
+
+### Visión del módulo
+
+El CSAT Improvement Engine (CIE) es el módulo estratégico central de FIN Architect Enterprise. Su premisa es simple: **todo cambio técnico en el ecosistema de FIN existe para mejorar la satisfacción del cliente**. El CIE traduce los hallazgos técnicos del sistema en impacto sobre el CSAT, convierte la experiencia del usuario en evidencia accionable, y produce al final de cada reporte un plan de mejora priorizado por retorno sobre satisfacción.
+
+El CIE es obligatorio en todos los reportes ejecutivos de FIN Architect. No es un módulo opcional.
+
+---
+
+### 9.1 Calidad Conversacional
+
+El CIE evalúa la calidad intrínseca de las respuestas de FIN como agente conversacional. No evalúa si FIN resolvió el problema (eso lo hace el FIS) sino **cómo interactuó** con el usuario en el camino.
+
+#### Dimensiones evaluadas
+
+**Longitud de respuesta**
+
+FIN tiende a respuestas largas cuando no tiene certeza del problema o cuando varias pautas se activan simultáneamente. Una respuesta larga no es sinónimo de una respuesta buena: aumenta la carga cognitiva del usuario, reduce la tasa de lectura completa y correlaciona negativamente con el CSAT.
+
+*Señal de detección:* Respuestas de FIN con > 300 caracteres en el turno inicial, o con > 500 caracteres en cualquier turno. Comparación: si la respuesta larga termina en resolución, es aceptable. Si termina en escalación o frustración, es un problema.
+
+*Score de dimensión:* `100 - clamp((chars_promedio_respuesta_fin - 200) / 5, 0, 100)`
+
+---
+
+**Claridad de respuesta**
+
+Una respuesta clara tiene una sola idea central, usa lenguaje del usuario (no del sistema), y termina con un paso concreto o una pregunta directa. Una respuesta poco clara mezcla instrucciones, usa terminología técnica, o no indica qué debe hacer el usuario a continuación.
+
+*Señal de detección:* Conversaciones donde el usuario envía "no entendí", "¿cómo?", "¿puedes explicarme mejor?" o reformula su pregunta idéntica en el turno siguiente de FIN. Estas frases son indicadores directos de baja claridad.
+
+*Score de dimensión:* `100 - (tasa_de_reformulacion_usuario × 100)`
+
+---
+
+**Exceso de preguntas**
+
+FIN puede requerir contexto para dar una respuesta precisa. Sin embargo, hacer más de 2 preguntas en secuencia antes de intentar una respuesta genera fricción alta. El usuario siente que está siendo interrogado, no ayudado.
+
+*Señal de detección:* Turnos consecutivos de FIN que terminan en signo de interrogación. Conversaciones con > 3 preguntas de FIN en los primeros 6 turnos.
+
+*Score de dimensión:* `100 - clamp((preguntas_consecutivas_max - 1) × 30, 0, 100)`
+
+---
+
+**Lenguaje técnico innecesario**
+
+FIN hereda terminología del sistema de soporte: "IACR", "cuadre de caja", "anulación de POS", "NIT", "DIAN", "resolución confirmada". Algunos de estos términos son necesarios. Otros son jerga interna que el usuario no entiende y que genera distancia en lugar de confianza.
+
+*Señal de detección:* Lista de términos técnicos de alto riesgo que, cuando aparecen en una respuesta de FIN donde el usuario no los usó primero, correlacionan con mayor frustración. El CIE mantiene esta lista y la actualiza con cada período.
+
+*Score de dimensión:* `100 - (términos_técnicos_no_espejados / total_turnos_fin × 100)`
+
+---
+
+**Empatía**
+
+Empatía no es usar palabras como "entiendo" — es reconocer el estado emocional del usuario antes de intentar resolver. FIN puede reconocer empatía cuando: (a) el usuario expresa frustración y FIN lo valida antes de dar una instrucción, o (b) la situación es urgente y FIN lo reconoce antes de iniciar el diagnóstico.
+
+*Señal de detección:* Conversaciones con `emociones=Negative` o `frustration_score > 60` donde FIN no incluye ninguna frase de reconocimiento emocional en los primeros 3 turnos.
+
+*Score de dimensión:* `tasa_de_reconocimiento_emocional × 100` en conversaciones de alta frustración
+
+---
+
+**Confirmaciones innecesarias**
+
+"¿Hay algo más en lo que pueda ayudarte?" al final de cada turno, o "¿Te fue útil esa respuesta?" cuando el usuario acaba de decir que necesita al agente, son confirmaciones que añaden fricción sin valor. El CIE las detecta como ruido conversacional.
+
+*Señal de detección:* Frases de confirmación en > 60% de los turnos de FIN en una conversación.
+
+*Score de dimensión:* `100 - clamp((tasa_confirmaciones - 0.30) × 200, 0, 50)`
+
+---
+
+**Repeticiones**
+
+FIN repite información cuando no tiene claridad sobre si el usuario la leyó, o cuando varias pautas se activan sobre el mismo tema. La repetición incrementa la longitud total de la conversación sin añadir valor.
+
+*Señal de detección:* Similitud > 0.70 entre dos respuestas de FIN en la misma conversación (usando Jaccard sobre palabras).
+
+*Score de dimensión:* `100 - (turnos_con_repeticion / total_turnos_fin × 100)`
+
+---
+
+**Cambios bruscos de contexto**
+
+FIN puede perder el hilo cuando múltiples pautas se activan con temas diferentes, o cuando el workflow cambia de nodo inesperadamente. El resultado es una respuesta que no tiene relación con lo que el usuario acaba de decir — lo que genera confusión y frustración.
+
+*Señal de detección:* Turnos de FIN cuyo contenido semántico tiene baja similitud (< 0.20) con el turno anterior del usuario.
+
+*Score de dimensión:* `100 - (turnos_con_cambio_brusco / total_turnos_fin × 100)`
+
+---
+
+**Personalización**
+
+FIN recibe el nombre del usuario, el nombre de la empresa, el plan, el contexto operativo. Una respuesta altamente personalizada usa estos datos para adaptar la instrucción: "En tu caso, GALILEA BRUNCH, con plan RESUNIVERSAL, el proceso sería..." Una respuesta genérica ignora estos datos y da la misma instrucción a cualquier usuario.
+
+*Señal de detección:* Proporción de respuestas de FIN que incluyen al menos un dato específico del usuario (nombre, empresa, plan, o contexto operativo detectado).
+
+*Score de dimensión:* `tasa_respuestas_personalizadas × 100`
+
+---
+
+#### Score de Calidad Conversacional (SCC)
+
+```
+SCC = (longitud × 0.15) + (claridad × 0.20) + (exceso_preguntas × 0.15) +
+      (lenguaje_tecnico × 0.10) + (empatia × 0.15) + (confirmaciones × 0.05) +
+      (repeticiones × 0.08) + (cambios_contexto × 0.07) + (personalizacion × 0.05)
+```
+
+El SCC es una de las entradas directas al Predicted CSAT Score.
+
+---
+
+### 9.2 Experiencia del Cliente
+
+El CIE detecta automáticamente los momentos y patrones de experiencia negativa a lo largo de las conversaciones.
+
+#### Detección de momentos de frustración
+
+Un momento de frustración es un turno específico donde el usuario expresa, de manera explícita o implícita, que la conversación no está funcionando para él.
+
+**Señales explícitas:**
+- Frases de solicitud de agente: "necesito un asesor", "quiero hablar con alguien", "agente humano"
+- Expresiones de impaciencia: "llevo mucho tiempo", "de nuevo lo mismo", "cuánto tiempo más"
+- Afirmaciones negativas sobre FIN: "no me estás ayudando", "ya me dijiste eso", "eso no es lo que pregunté"
+- Signos de puntuación de frustración: uso de mayúsculas, puntuación excesiva
+
+**Señales implícitas:**
+- El usuario repite el mismo mensaje más de una vez
+- El usuario da una respuesta monosilábica ("no", "ya", "ok") después de una respuesta larga de FIN
+- El usuario ignora la pregunta de FIN y repite su solicitud original
+
+El CIE mapea estos momentos en la línea de tiempo de la conversación e identifica en qué turno ocurre el primer momento de frustración — lo que define cuánto "crédito" tenía FIN antes de perder al usuario.
+
+#### Índice de Esfuerzo del Cliente (IEC)
+
+El Customer Effort Score (CES) adaptado al contexto de FIN. Mide cuánto trabajo tuvo que hacer el usuario para obtener una respuesta:
+
+```
+IEC = (numero_de_turnos × 0.25) +
+      (veces_que_repitio_informacion × 0.30) +
+      (numero_de_intentos × 0.25) +
+      (cambios_de_canal_o_flujo × 0.20)
+```
+
+Normalizado a 0–100. IEC alto = mucho esfuerzo = CSAT bajo.
+
+#### Conversaciones con riesgo de abandono
+
+Una conversación tiene riesgo de abandono cuando el usuario deja de responder sin haber resuelto y sin haber solicitado cierre. El CIE detecta:
+- Silencio del usuario > X minutos después de un turno de FIN que terminaba en pregunta
+- Conversaciones que terminan en `assumed_resolution` con frustración_score > 60
+- Conversaciones donde el último mensaje del usuario fue una solicitud de agente no atendida
+
+#### Pérdida de contexto por parte de FIN
+
+El CIE detecta cuándo FIN "olvida" información que el usuario ya dio:
+- FIN pregunta algo que el usuario respondió en un turno anterior
+- FIN da una instrucción genérica ignorando el contexto específico que el usuario compartió
+- FIN reinicia el flujo de diagnóstico habiendo ya capturado el tipo de problema
+
+Estas instancias incrementan directamente el IEC y correlacionan fuertemente con CSAT bajo.
+
+---
+
+### 9.3 Calidad del Escalamiento
+
+El escalamiento es el momento más crítico de la conversación desde la perspectiva del CSAT. Un escalamiento bien ejecutado puede recuperar la experiencia del usuario. Uno mal ejecutado la destruye definitivamente.
+
+#### Métricas de calidad del escalamiento
+
+| Métrica | Cálculo | Umbral de alerta |
+|---------|---------|-----------------|
+| **Timing de escalamiento** | Turnos entre primera solicitud de agente y escalación efectiva | > 2 turnos = tardío |
+| **Escalamiento prematuro** | Conversaciones escaladas donde intención estaba cubierta por KB y pautas | > 30% = prematuridad estructural |
+| **Completitud del handoff** | % de conversaciones donde FIN transfirió: intención, contexto, datos del usuario, intentos previos | < 70% = handoff incompleto |
+| **Repetición post-escalamiento** | Conversaciones donde el agente humano preguntó algo que el usuario ya había dado | > 40% = pérdida de contexto sistémica |
+| **TTFA post-escalamiento** | Segundos hasta primera respuesta del agente | > 300s en horario = problema operacional |
+| **Resolución post-escalamiento** | % de escalaciones que terminan en resolución confirmada por el agente | < 60% = el problema está más allá del agente |
+
+#### Plantilla de handoff ideal
+
+El CIE define la plantilla de handoff que FIN debería generar al escalar:
+
+```
+CONTEXTO PARA EL AGENTE:
+  Usuario: [nombre] | Empresa: [nombre] | Plan: [plan]
+  Intención detectada: [AI Title]
+  Nivel de frustración estimado: [score]/100
+  Riesgo de churn: [score]/100
+  Intentos previos: [N]
+  Lo que FIN intentó: [resumen de diagnóstico]
+  Por qué no se resolvió: [razón]
+  Datos ya confirmados: [lista]
+  Datos pendientes de confirmar: [lista]
+  Urgencia operativa: [nivel]
+```
+
+El CIE evalúa qué proporción de handoffs contiene cada uno de estos campos y calcula un score de completitud de handoff.
+
+---
+
+### 9.4 Calidad de la Base de Conocimiento
+
+El CIE complementa el Knowledge Analytics con una evaluación orientada específicamente al impacto en CSAT — no solo en utilización o cobertura.
+
+#### Artículos que generan baja resolución
+
+Para cada artículo, el CIE calcula la tasa de resolución de las conversaciones donde fue utilizado. Un artículo con tasa de resolución < 30% no está cumpliendo su función como soporte de respuesta, independientemente de que FIN lo use frecuentemente.
+
+#### Artículos con instrucciones ambiguas
+
+*Señal:* El usuario sigue con preguntas después de que FIN cita el artículo. Indica que las instrucciones del artículo no son suficientemente claras para resolver sin intervención adicional.
+
+#### Artículos demasiado extensos
+
+*Señal:* Artículos con > 800 palabras cuya citación no reduce la frustración del usuario. Los artículos extensos son difíciles de consultar en tiempo real — FIN los cita pero el usuario no puede leerlos en el contexto de la conversación.
+
+#### Artículos incompletos
+
+*Señal:* Conversaciones donde FIN usó el artículo más relevante disponible, pero el agente humano que resolvió el caso tuvo que dar instrucciones adicionales no contempladas en el artículo. El delta entre lo que el artículo cubre y lo que el agente tuvo que añadir define la incompletitud.
+
+#### Artículos que deberían dividirse
+
+*Señal:* Un artículo es citado para intenciones muy diferentes entre sí. Indica que el artículo cubre más de un tema y debería dividirse en artículos específicos.
+
+#### Score de Calidad de KB (SCKB)
+
+```
+SCKB = (tasa_resolucion_ponderada × 0.40) +
+       (ausencia_de_ambiguedad × 0.20) +
+       (adecuacion_de_longitud × 0.15) +
+       (completitud × 0.15) +
+       (especificidad × 0.10)
+```
+
+---
+
+### 9.5 Calidad de Workflows
+
+El CIE evalúa los workflows desde la perspectiva de fricción del usuario — cuánto esfuerzo le genera el flujo al cliente, independientemente de si técnicamente está bien diseñado.
+
+#### Rutas innecesarias
+
+Nodos en el flujo que el usuario debe atravesar pero que no añaden información útil ni cambian el resultado. Se detectan como nodos con alta tasa de paso (> 80% de conversaciones los atraviesan) y baja tasa de diferenciación (el resultado es el mismo independientemente de qué responde el usuario en ese nodo).
+
+#### Mensajes redundantes
+
+Dos o más mensajes del workflow que comunican la misma información. Detectados por similitud de contenido > 0.70 entre mensajes consecutivos del bot.
+
+#### Decisiones repetidas
+
+El usuario es preguntado lo mismo en dos nodos diferentes del flujo. Detectado cuando la respuesta del usuario en el nodo B es idéntica a la del nodo A y ambas respuestas son del mismo tipo.
+
+#### Puntos de abandono
+
+Nodos específicos donde la proporción de usuarios que no continúan es significativamente mayor que en otros nodos. Estos son los puntos de mayor fricción del flujo. El CIE los identifica por nombre de nodo y porcentaje de abandono.
+
+#### Score de Calidad de Workflow (SCW)
+
+```
+SCW = (ausencia_rutas_innecesarias × 0.25) +
+      (ausencia_mensajes_redundantes × 0.20) +
+      (ausencia_decisiones_repetidas × 0.20) +
+      (tasa_completitud_flujo × 0.20) +
+      (tasa_salida_exitosa_nodo_final × 0.15)
+```
+
+---
+
+### 9.6 Calidad de Pautas (desde perspectiva CSAT)
+
+El Guideline Analytics del FIS evalúa las pautas desde su salud técnica. El CIE las evalúa desde su impacto en la experiencia del cliente.
+
+#### Pautas que aumentan el esfuerzo conversacional
+
+Pautas que, cuando se activan, correlacionan con aumento del IEC (Índice de Esfuerzo del Cliente). Puede ser porque la pauta obliga a FIN a hacer más preguntas, a dar respuestas más largas, o a iniciar un sub-flujo diagnóstico innecesario.
+
+#### Pautas que generan respuestas largas
+
+Pautas cuya activación produce un incremento medible en la longitud promedio de la respuesta de FIN en ese turno. Si la longitud adicional no se traduce en mayor resolución, la pauta está generando ruido.
+
+#### Pautas con impacto negativo en resolución
+
+Ya definidas en la Sección 5 (pautas con `score_impacto < -10`). El CIE los recoge y los expone en el contexto de CSAT — cuántos puntos de CSAT se están perdiendo por cada pauta con impacto negativo.
+
+#### Score de Calidad de Pautas para CSAT (SCPC)
+
+```
+SCPC = (ausencia_aumento_esfuerzo × 0.30) +
+       (ausencia_respuestas_largas × 0.25) +
+       (ausencia_contradicciones × 0.25) +
+       (tasa_activacion_adecuada × 0.20)
+```
+
+---
+
+### 9.7 Calidad de Atributos (desde perspectiva CSAT)
+
+#### Atributos poco útiles
+
+Un atributo es poco útil cuando su valor no cambia el comportamiento de FIN ni la priorización del caso. Se detecta cuando el mismo resultado ocurre independientemente del valor del atributo.
+
+#### Atributos con baja precisión
+
+Atributos donde el valor asignado automáticamente no corresponde al contexto real de la conversación. Detectado cuando el agente humano, al tomar el caso, opera como si el atributo tuviera un valor diferente al asignado por FIN.
+
+#### Atributos redundantes
+
+Dos atributos que capturan información muy similar y tienen distribuciones de valor altamente correlacionadas. Generan duplicación de lógica sin beneficio adicional.
+
+#### Atributos faltantes
+
+Contexto operativo que aparece repetidamente en los transcripts pero que ningún atributo captura. El CIE los identifica como candidatos a nuevos atributos con impacto directo en personalización y CSAT.
+
+#### Score de Calidad de Atributos para CSAT (SCAC)
+
+```
+SCAC = (poder_discriminante_promedio × 0.35) +
+       (precision_deteccion_promedio × 0.35) +
+       (ausencia_redundancia × 0.15) +
+       (cobertura_contextos_clave × 0.15)
+```
+
+---
+
+### 9.8 Predicted CSAT Score
+
+#### Modelo conceptual
+
+El Predicted CSAT Score (PCS) es una estimación del CSAT que obtendría FIN si todos los usuarios calificaran su experiencia. A diferencia del Rating promedio (que solo usa conversaciones con calificación real, típicamente < 20% del total), el PCS usa el 100% de las conversaciones del período.
+
+El modelo se construye sobre la correlación empírica entre las métricas del sistema y los ratings reales cuando existen.
+
+#### Componentes del modelo
+
+```
+PCS_raw = (SCC × 0.25) +    # Calidad Conversacional
+          (IEC_inv × 0.20) + # Inverso del Esfuerzo del Cliente
+          (TRR × 0.20) +     # Tasa de Resolución Real
+          (SCKB × 0.10) +    # Calidad de KB
+          (SCW × 0.10) +     # Calidad de Workflow
+          (SCPC × 0.08) +    # Calidad de Pautas para CSAT
+          (SCAC × 0.07)      # Calidad de Atributos para CSAT
+
+donde IEC_inv = 100 - IEC
+```
+
+#### Calibración con ratings reales
+
+Cuando hay conversaciones con rating real, el CIE calibra el modelo:
+
+```
+calibracion = rating_real_promedio_normalizado / PCS_predicho_de_conversaciones_con_rating
+
+PCS_calibrado = PCS_raw × calibracion
+```
+
+El factor de calibración se actualiza cada período y se almacena en la memoria del sistema. Con el tiempo, el modelo se vuelve más preciso a medida que acumula más pares (rating_real, prediccion).
+
+#### Escala del PCS
+
+El PCS se expresa en escala 0–100 (no en escala 1–5) para coherencia con los demás indicadores del sistema.
+
+| PCS | Equivalente CSAT | Interpretación |
+|-----|-----------------|----------------|
+| 85–100 | 4.3–5.0 | Usuarios muy satisfechos. FIN supera expectativas. |
+| 70–84 | 3.5–4.2 | Satisfacción aceptable. Mejoras incrementales. |
+| 55–69 | 2.8–3.4 | Insatisfacción moderada. Intervención necesaria. |
+| 40–54 | 2.0–2.7 | Insatisfacción significativa. Riesgo de churn activo. |
+| 0–39 | < 2.0 | Insatisfacción crítica. El agente está dañando la marca. |
+
+#### Factores de impacto positivo y negativo
+
+El reporte del PCS incluye siempre una lista de los factores que más lo están afectando:
+
+**Factores positivos** (los que más suman al PCS en el período):
+```
+▲ +8.2 pts  Calidad de diagnóstico alta en intenciones de facturación
+▲ +5.1 pts  KB bien utilizada en consultas de inventario
+▲ +3.4 pts  Empatía detectada en conversaciones de urgencia alta
+```
+
+**Factores negativos** (los que más lo reducen):
+```
+▼ -12.3 pts  Delay de escalamiento promedio de 3.2 turnos
+▼ -8.7 pts   IEC alto: usuarios repiten información 2.1 veces promedio
+▼ -6.1 pts   SCC bajo en dimensión de longitud: respuestas promedio de 420 chars
+▼ -4.2 pts   Cambios bruscos de contexto en 34% de conversaciones
+```
+
+---
+
+### 9.9 CSAT Improvement Plan
+
+**El CSAT Improvement Plan es la sección final obligatoria de todos los reportes ejecutivos de FIN Architect.** No puede omitirse. Si no hay suficientes datos para generarlo, el sistema lo indica explícitamente con las métricas disponibles.
+
+#### Estructura del plan
+
+El plan clasifica todas las recomendaciones orientadas a CSAT en cuatro categorías:
+
+---
+
+**QUICK WINS — Alto impacto, bajo esfuerzo**
+
+Criterio: Impacto estimado en PCS ≥ 4 puntos + esfuerzo de implementación ≤ 4 horas.
+
+Cada Quick Win incluye:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  QUICK WIN  [PRIORIDAD: 1]                                           │
+│  Componente: Pauta #884123 — ESCALAMIENTO POR SOLICITUD              │
+│  Impacto estimado en PCS: +5.2 puntos                                │
+│  Esfuerzo estimado: 2 horas                                          │
+│                                                                      │
+│  Motivo:                                                             │
+│  FIN demora 3.2 turnos en escalar cuando el usuario ya pidió agente. │
+│  Esto genera IEC alto y es el factor de mayor impacto negativo       │
+│  en el PCS del período.                                              │
+│                                                                      │
+│  Acción:                                                             │
+│  Ajustar la pauta para que el escalamiento ocurra en máximo 1 turno  │
+│  después de la primera solicitud de agente explícita.               │
+│                                                                      │
+│  Beneficio esperado:                                                 │
+│  Reducción del IEC promedio de 72 a 55. Aumento del PCS de 58 a 63. │
+│  Reducción de la Tasa de Emoción Negativa en ~15%.                  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**ALTO IMPACTO — Requieren planificación (1–2 semanas)**
+
+Criterio: Impacto estimado en PCS ≥ 6 puntos + esfuerzo > 4 horas.
+
+Misma estructura que Quick Wins, con adición del campo:
+- **Dependencias:** qué debe existir o implementarse primero
+- **Riesgo de implementación:** bajo / medio / alto
+
+---
+
+**MEDIANO IMPACTO — Mejoras estructurales (1+ mes)**
+
+Criterio: Impacto estimado en PCS 2–5 puntos + cambio de diseño conversacional o arquitectura de KB.
+
+Incluye además:
+- **Métrica de éxito:** cómo saber cuándo la mejora funcionó
+- **Ventana de medición:** cuántos días esperar antes de medir el impacto
+
+---
+
+**LARGO PLAZO — Evolución del sistema**
+
+Criterio: Impacto en PCS difícil de aislar pero acumulativamente significativo. Cambios estructurales en el ecosistema (nuevo workflow, rediseño de arquitectura de pautas, reescritura de la KB de un producto).
+
+---
+
+#### Resumen ejecutivo del plan
+
+Al final del CSAT Improvement Plan, el CIE genera siempre un resumen ejecutivo de una sola pantalla:
+
+```
+╔═══════════════════════════════════════════════════════════════════╗
+║          CSAT IMPROVEMENT PLAN — RESUMEN EJECUTIVO                ║
+║          Restobar | Período: últimos 30 días                      ║
+╠═══════════════════════════════════════════════════════════════════╣
+║  PCS actual:    58 / 100   🔴                                     ║
+║  PCS objetivo:  80 / 100   (target configurado)                   ║
+║  Brecha:        22 puntos                                         ║
+║                                                                   ║
+║  Con las mejoras identificadas en este plan:                      ║
+║  PCS proyectado: 74 / 100  (si se implementa el 100%)            ║
+║  PCS mínimo:     65 / 100  (si solo se implementan Quick Wins)   ║
+║                                                                   ║
+║  QUICK WINS disponibles:   4   (+14.2 pts combinados)            ║
+║  Mejoras de alto impacto:  3   (+11.8 pts combinados)            ║
+║  Mejoras de mediano impacto: 6 (+8.4 pts combinados)             ║
+║  Largo plazo: 2              (+indefinido)                        ║
+║                                                                   ║
+║  TOP 3 ACCIONES POR IMPACTO/ESFUERZO:                            ║
+║  1. Reducir delay de escalamiento (pauta)     → +5.2 pts | 2h    ║
+║  2. Reducir longitud de respuestas FIN        → +4.1 pts | 4h    ║
+║  3. Publicar artículo "Anulación POS cerrado" → +3.8 pts | 3h    ║
+╚═══════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+### 9.10 Simulación de Impacto en CSAT
+
+#### El problema de la pregunta "¿qué pasaría si…?"
+
+Los equipos que operan FIN necesitan poder evaluar cambios antes de implementarlos. "Si mejoramos estas tres pautas, ¿cuánto subiría el CSAT?" no es una pregunta que Intercom pueda responder. El CIE diseña un mecanismo conceptual para responderla.
+
+#### Modelo de simulación
+
+La simulación funciona sobre el modelo del PCS. Dado que el PCS es una función de los 7 sub-scores (SCC, IEC, TRR, SCKB, SCW, SCPC, SCAC), simular el impacto de un cambio equivale a estimar cómo ese cambio modifica uno o más de esos sub-scores.
+
+**Tipo 1: Simulación de componente**
+
+"¿Qué pasaría con el PCS si el SCC subiera de 55 a 75?"
+
+```
+PCS_simulado = PCS_actual
+             + (delta_SCC × peso_SCC)
+             = 58 + (20 × 0.25)
+             = 58 + 5.0
+             = 63 / 100
+```
+
+**Tipo 2: Simulación de acción específica**
+
+"¿Qué pasaría con el PCS si reducimos el delay de escalamiento a ≤ 1 turno?"
+
+El CIE estima el efecto de esa acción sobre:
+- IEC: reducción estimada de X puntos (basada en historial de mejoras similares)
+- SCC (dimensión empatía): aumento estimado porque el usuario recibe atención más rápida
+- TRR: puede mejorar si los escalamientos más rápidos tienen mayor tasa de resolución
+
+Suma los efectos y proyecta el nuevo PCS.
+
+**Tipo 3: Simulación de escenario compuesto**
+
+"¿Qué pasaría con el PCS si implementamos las 3 Quick Wins simultáneamente?"
+
+El CIE asume independencia entre mejoras (conservador) o aplica un factor de correlación si el historial indica que ciertas mejoras se amplifican mutuamente.
+
+```
+PCS_escenario = PCS_actual + sum(delta_PCS_i × factor_correlacion_i)
+```
+
+**Tipo 4: Simulación de frontera**
+
+"¿Qué componente ofrece el mayor retorno para aumentar el PCS?"
+
+El CIE calcula el gradiente del PCS respecto a cada sub-score:
+
+```
+retorno_marginal(componente) = peso_componente × precision_estimacion
+```
+
+Ordena los componentes por retorno marginal y muestra al administrador dónde invertir el esfuerzo de mejora para obtener el mayor impacto por hora de trabajo.
+
+#### Output de la simulación
+
+```
+SIMULACIÓN: "¿Qué pasaría si reducimos escalamientos en 20%?"
+──────────────────────────────────────────────────────────────
+Escenario: Tasa de escalación baja de 88% a 68%
+
+Efectos estimados:
+  TRR:          +8.0 pts (más conversaciones resueltas por FIN)
+  IEC:          -12 pts  (menos esfuerzo para usuarios que no escalan)
+  SCC (empatía): +3.0 pts (FIN tiene más conversaciones que resolver bien)
+
+Impacto en PCS:
+  TRR ×0.20:     +1.6 pts
+  IEC_inv ×0.20: +2.4 pts
+  SCC ×0.25:     +0.8 pts
+  ─────────────────────
+  Delta PCS:     +4.8 puntos
+  PCS proyectado: 62.8 / 100
+
+Confianza de la estimación: 68% (basada en 3 mejoras similares en historial)
+Ventana de medición recomendada: 30 días post-implementación
+```
+
+---
+
+### 9.11 Integración del CIE en el Ecosistema de FIN Architect
+
+El CSAT Improvement Engine no opera de manera aislada. Se alimenta de todos los módulos existentes y entrega sus resultados como capa de lectura adicional sobre ellos.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                                                                     │
+│   FUENTES DE DATOS → CIE → OUTPUTS                                 │
+│                                                                     │
+│   Conversation Analytics ──────────────────┐                       │
+│   Knowledge Analytics ─────────────────────┤                       │
+│   Workflow Analytics ───────────────────────┤   ┌─────────────┐    │
+│   Guideline Analytics ──────────────────────┼──►│     CIE     ├──► Predicted CSAT │
+│   Attribute Analytics ──────────────────────┤   │             ├──► CSAT Improvement Plan │
+│   Escalation Analytics ─────────────────────┤   │             ├──► Simulaciones │
+│   Conversation Dataset (Fase 3) ────────────┤   └─────────────┘    │
+│   FIN Intelligence Score ───────────────────┘                       │
+│                                                                     │
+│   El CIE es el último módulo en ejecutarse en cada ciclo.          │
+│   Recibe los outputs de todos los demás y los sintetiza            │
+│   en términos de impacto sobre la experiencia del cliente.         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### El CIE en los reportes ejecutivos
+
+| Reporte | Presencia del CIE |
+|---------|------------------|
+| Auditoría diaria rápida | PCS del día + alertas críticas de experiencia |
+| Auditoría semanal completa | PCS semanal + CSAT Improvement Plan completo |
+| Auditoría mensual estratégica | PCS mensual + tendencia + simulaciones de escenario |
+| Executive Dashboard | Predicted CSAT Score como indicador maestro junto al FIS |
+| Reporte para PM | PCS histórico + ROI de mejoras en términos de CSAT |
+
+---
+
+## 10. Roadmap
 
 ### v1 — FIN Architect Core (estado actual)
 
 **Estado:** Implementado
 
 - Herramientas MCP individuales: audit_guideline, optimize_guideline, classify_guideline, detect_conflicts, score_guideline, simulate_fin, generate_guideline, extract_guidelines, architect_review
-- Dataset estructurado de 25 conversaciones reales
-- Knowledge Digital Twin (1,036 artículos inventariados)
-- Arquitectura de fin_intelligence_review()
-- Documento de arquitectura Enterprise (este documento)
+- Dataset estructurado de 25 conversaciones reales (Fase 3)
+- Knowledge Digital Twin (1,036 artículos inventariados, Fase 6)
+- Arquitectura de fin_intelligence_review() (Fase 4)
+- Arquitectura del FIN Continuous Learning Engine (Fase 6)
+- Documento de arquitectura Enterprise v1.1 (este documento, Fase 5–6)
 
 ---
 
-### v2 — FIN Intelligence Engine
+### v2 — FIN Intelligence Engine + CSAT Core
 
-**Objetivo:** Implementar el motor de inteligencia completo.  
+**Objetivo:** Implementar el motor de inteligencia completo y el núcleo del CSAT Improvement Engine.  
 **Prioridad:** Máxima.
 
 Componentes:
 - `fin_intelligence_review()` implementada con los 6 módulos internos
 - FIN Intelligence Score calculado automáticamente
-- Dashboard principal con los 12 indicadores
-- Sistema de recomendaciones (3 capas)
-- Auditoría semanal automática
-- Exportación de reportes en texto estructurado
+- **Predicted CSAT Score (PCS)** calculado automáticamente
+- **Score de Calidad Conversacional (SCC)** con sus 9 dimensiones
+- **Índice de Esfuerzo del Cliente (IEC)**
+- Dashboard principal con los 12 indicadores + PCS como indicador maestro
+- Sistema de recomendaciones (3 capas) + **CSAT Improvement Plan** (obligatorio)
+- Auditoría semanal automática con sección de CSAT al final
 
 Métricas de éxito de v2:
-- El FIS se puede calcular para cualquier período con datos reales
-- El sistema genera al menos 5 recomendaciones accionables por período
-- La auditoría semanal tarda menos de 15 minutos en ejecutarse
+- El FIS y el PCS se calculan automáticamente para cualquier período
+- El CSAT Improvement Plan se genera al final de cada reporte ejecutivo
+- El sistema identifica los top 3 Quick Wins de CSAT por período
 
 ---
 
-### v3 — FIN Analytics Platform
+### v3 — FIN Analytics Platform + CSAT Analytics
 
-**Objetivo:** Añadir profundidad analítica y visualizaciones.
+**Objetivo:** Añadir profundidad analítica, visualizaciones y simulación de CSAT.
 
 Componentes:
-- Historical Evolution: tracking del FIS en el tiempo
-- Benchmarks entre productos
-- Conversation Analytics con filtros avanzados
-- Escalation Analytics con análisis de delay
-- Knowledge Analytics con mapa de brechas
-- Auditoría de KB automática mensual
-- Sistema de pre-publicación (auditoría antes de publicar cambios)
+- Historical Evolution: tracking del FIS y del PCS en el tiempo
+- Benchmarks entre productos (FIS y PCS)
+- Conversation Analytics con filtros avanzados + timeline de frustración
+- Escalation Analytics con análisis de delay y calidad de handoff
+- Knowledge Analytics con mapa de brechas + SCKB
+- **Simulación de impacto en CSAT** (tipos 1, 2, 3 y 4)
+- Auditoría de KB automática mensual con IEA por artículo
+- Sistema de pre-publicación con estimación de impacto en PCS
 
 Métricas de éxito de v3:
-- El equipo puede comparar el performance de FIN entre Restobar y Pymes
-- La auditoría pre-publicación previene al menos 1 conflicto por mes
-- Se puede ver la tendencia del FIS de los últimos 6 meses
+- El equipo puede simular el impacto de cualquier mejora en el PCS antes de implementarla
+- La curva del PCS a 6 meses es visible y muestra tendencia positiva
+- El IEA de cada artículo está disponible semanalmente
 
 ---
 
-### v4 — FIN Improvement System
+### v4 — FIN Improvement System + CSAT Loop Cerrado
 
-**Objetivo:** Cerrar el ciclo: detectar → recomendar → implementar → validar.
+**Objetivo:** Cerrar el ciclo completo: detectar → recomendar → implementar → validar → aprender.
 
 Componentes:
-- Improvement Center: cola de mejoras con estado y responsable
-- Tracking de impacto: antes vs después de implementar una mejora
-- Generador de pautas integrado en el flujo de recomendaciones
-- Auditoría de nuevas pautas (7 días post-publicación)
-- Risk Center: alertas de churn y operacionales en tiempo real
-- Attribute Analytics completo
+- Improvement Center: cola de mejoras con estado, responsable e impacto en PCS
+- Tracking de impacto en FIS y PCS: antes vs después
+- Generador de pautas integrado en el CSAT Improvement Plan
+- Auditoría de nuevas pautas con medición de impacto en CSAT (7–30 días)
+- Risk Center: alertas de churn y operacionales con correlación a PCS
+- **Calibración automática del modelo PCS** con ratings reales acumulados
+- FIN Continuous Learning Engine activo (patrones, brechas, clusters)
 
 Métricas de éxito de v4:
-- El tiempo entre detectar un problema y tener una pauta publicada baja a < 48h
-- El ROI de las mejoras implementadas es medible y visible
-- El FIS mejora en promedio 5 puntos por mes durante los primeros 3 meses
+- El PCS sube en promedio 5 puntos por mes durante los primeros 3 meses
+- La precisión de las estimaciones de impacto supera el 70%
+- El CSAT Improvement Plan se implementa en > 60% de sus Quick Wins cada semana
 
 ---
 
 ### Enterprise — FIN Architect Enterprise
 
-**Objetivo:** Producto completo multi-producto, multi-usuario, con automatización total.
+**Objetivo:** Producto completo multi-producto, multi-usuario, orientado al CSAT como norte estratégico.
 
 Componentes:
-- Dashboard multi-producto: vista unificada de Restobar + Pymes + Nómina + Alojamientos
+- Dashboard multi-producto: FIS + PCS para Restobar + Pymes + Nómina + Alojamientos
 - Perfiles de usuario con vistas personalizadas (Director / Líder / Admin / Arquitecto / PM)
-- Auditorías 100% automáticas (diaria, semanal, mensual)
-- Sistema de alertas: notificaciones al equipo cuando el FIS cae o hay alerta crítica
-- API de integración: el ecosistema de FIN Architect puede alimentar otras herramientas
-- Modo simulación avanzado: predice el impacto de un cambio antes de implementarlo
-- Memoria conversacional: el sistema recuerda patrones de períodos anteriores y ajusta sus recomendaciones
-- Roadmap de optimización generado automáticamente para cada producto
+- Auditorías 100% automáticas (diaria, semanal, mensual) con CIE obligatorio en todas
+- Sistema de alertas: notificaciones cuando el PCS cae o hay alerta crítica de CSAT
+- API de integración: FIS y PCS disponibles para herramientas externas (NPS, BI, CRM)
+- **Motor de simulación avanzado:** escenarios compuestos con correlaciones empíricas
+- Memoria conversacional activa: el CLE ajusta el modelo PCS con cada ciclo
+- Roadmap de optimización de CSAT generado automáticamente por producto
 
 Métricas de éxito Enterprise:
-- El Director de Soporte revisa el FIS cada semana en < 5 minutos
-- El Administrador Intercom implementa mejoras directamente desde el Improvement Center
-- El FIS de todos los productos supera 70 en el primer año
-- El número de escalaciones evitables cae un 40% respecto al estado inicial
+- El Director de Soporte revisa el PCS y el FIS cada semana en < 5 minutos
+- El CSAT real (cuando medible) converge con el PCS predicho en ≤ 10 puntos de diferencia
+- El PCS de todos los productos supera 75 en el primer año
+- El número de escalaciones evitables cae un 40% y el IEC baja un 30% respecto al estado inicial
 
 ---
 
-## 10. Conclusión
+## 11. Conclusión
 
 ### Por qué FIN Architect Enterprise supera la auditoría tradicional de Intercom
 
@@ -1152,12 +1775,14 @@ FIN Architect Enterprise es un sistema de control continuo.
 
 **Multi-capa:** Cubre al mismo tiempo las pautas, la KB, los workflows, los atributos, los escalamientos y la experiencia del cliente. No hay punto ciego.
 
-Una auditoría tradicional responde: *¿Qué pasó el mes pasado?*  
-FIN Architect Enterprise responde: *¿Qué está pasando hoy, por qué, qué hacer mañana y cómo saber si funcionó?*
+**Orientado al CSAT:** Cada mejora técnica se mide en su impacto sobre la satisfacción del cliente. El Predicted CSAT Score traduce el lenguaje técnico del sistema al lenguaje del negocio. El CSAT Improvement Plan convierte cada auditoría en un plan de acción concreto, priorizado por retorno sobre experiencia del cliente — no por facilidad de implementación ni por urgencia técnica.
 
-Esa es la diferencia entre una herramienta de reporte y una plataforma de inteligencia operacional.
+Una auditoría tradicional responde: *¿Qué pasó el mes pasado?*  
+FIN Architect Enterprise responde: *¿Qué está pasando hoy, por qué, qué hacer mañana, cuánto subirá el CSAT si lo hacemos, y cómo saber si funcionó?*
+
+Esa es la diferencia entre una herramienta de reporte y una plataforma de inteligencia operacional orientada al cliente.
 
 ---
 
-*FIN Architect Enterprise — Blueprint Oficial v1.0*  
-*Fase 5 | 2026-06-26*
+*FIN Architect Enterprise — Blueprint Oficial v1.1*  
+*Fase 5 (original) + Fase 6 (CSAT Improvement Engine) | 2026-06-26*
