@@ -8,6 +8,9 @@ import {
   getHistory,
   getHistoryById,
   getStats,
+  getIntercomSyncStatus,
+  getIntercomSyncHistory,
+  triggerIntercomSync,
 } from '../controllers/adminController';
 
 const router = Router();
@@ -24,5 +27,9 @@ router.patch('/config/teams', patchSection('teams'));
 router.get('/history', getHistory);
 router.get('/history/:id', getHistoryById);
 router.get('/stats', getStats);
+
+router.get('/intercom/status', getIntercomSyncStatus);
+router.get('/intercom/sync-history', getIntercomSyncHistory);
+router.post('/intercom/sync', triggerIntercomSync);
 
 export default router;

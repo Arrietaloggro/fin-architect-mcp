@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger';
+import '../utils/requestTypes';
 
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const requestId = uuidv4().slice(0, 8);
   const startTime = Date.now();
 
-  (req as Request & { requestId: string }).requestId = requestId;
+  req.requestId = requestId;
 
   res.on('finish', () => {
     const ms = Date.now() - startTime;

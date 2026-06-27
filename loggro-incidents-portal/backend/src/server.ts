@@ -4,26 +4,89 @@ import { config } from './config';
 import { logger } from './utils/logger';
 import { runMigrations } from './database/migrations';
 import { closeDb } from './database/connection';
+import { runIntercomSync } from './services/intercomDiscovery';
+
+function validateStartup(): void {
+  const warnings: string[] = [];
+
+  if (!config.intercom.accessToken) {
+    warnings.push('INTERCOM_ACCESS_TOKEN no configurado — la creación de tickets fallará');
+  }
+  if (config.security.csrfSecret.includes('dev-')) {
+    warnings.push('CSRF_SECRET es el valor por defecto — cambia esto en producción');
+  }
+  if (config.security.adminApiKey.includes('dev-')) {
+    warnings.push('ADMIN_API_KEY es el valor por defecto — cambia esto en producción');
+  }
+  if (config.isProduction && config.cors.origin.includes('localhost')) {
+    warnings.push('CORS_ORIGIN apunta a localhost en modo producción');
+  }
+
+  // Check Intercom ticket types in production
+  if (config.intercom.accessToken && config.isProduction) {
+    const missing = Object.entries(config.intercom.ticketTypes)
+      .filter(([, v]) => !v)
+      .map(([k]) => k);
+    if (missing.length) {
+      warnings.push(`Ticket Type IDs no configurados para: ${missing.join(', ')}`);
+    }
+  }
+
+  if (warnings.length) {
+    warnings.forEach((w) => logger.warn(`Startup warning: ${w}`));
+  }
+}
 
 async function main() {
   try {
     runMigrations();
+    validateStartup();
 
     const server = app.listen(config.port, () => {
-      logger.info(`Server started`, { port: config.port, env: config.env });
-      logger.info(`API ready at http://localhost:${config.port}/api`);
+      logger.info('Server started', { port: config.port, env: config.env });
+      logger.info(`Health:  http://localhost:${config.port}/health`);
+      logger.info(`API:     http://localhost:${config.port}/api`);
+
+      // Non-blocking Intercom sync on startup (when token is configured)
+      if (config.intercom.accessToken) {
+        runIntercomSync(config.intercom.accessToken, 'startup')
+          .then((result) => {
+            if (result.status === 'success') {
+              logger.info('Startup Intercom sync completed', {
+                changes: result.changes.length,
+                ticketTypes: result.ticketTypes.length,
+                durationMs: result.durationMs,
+              });
+            } else {
+              logger.warn('Startup Intercom sync failed', { error: result.error });
+            }
+          })
+          .catch((err: Error) => logger.warn('Startup Intercom sync error', { error: err.message }));
+      }
     });
 
-    const shutdown = () => {
-      logger.info('Shutting down gracefully...');
+    // Graceful shutdown — handles Railway SIGTERM and Ctrl+C
+    const shutdown = (signal: string) => {
+      logger.info(`${signal} received — shutting down gracefully`);
       server.close(() => {
         closeDb();
+        logger.info('Server closed');
         process.exit(0);
       });
+      // Force exit after 10s if connections don't close
+      setTimeout(() => process.exit(1), 10_000).unref();
     };
 
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
+    process.on('uncaughtException', (err) => {
+      logger.error('Uncaught exception', { error: err.message, stack: err.stack });
+      shutdown('uncaughtException');
+    });
+    process.on('unhandledRejection', (reason) => {
+      logger.error('Unhandled promise rejection', { reason });
+    });
+
   } catch (err) {
     logger.error('Failed to start server', { error: err instanceof Error ? err.message : err });
     process.exit(1);
