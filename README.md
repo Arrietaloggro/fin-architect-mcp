@@ -1,11 +1,96 @@
-# FIN Architect MCP
+# FIN Architect MCP — Enterprise
 
 > **Intelligent architecture layer for financial support operations** — audit, optimize, and govern knowledge articles and conversation guidelines through a unified Decision Engine.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/arrietaloggro/fin-architect-mcp)
-[![Status](https://img.shields.io/badge/status-stable-green.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0_Beta-blue.svg)](https://github.com/arrietaloggro/fin-architect-mcp)
+[![Status](https://img.shields.io/badge/status-Beta_Operacional-green.svg)]()
 [![MCP](https://img.shields.io/badge/protocol-MCP-purple.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-gray.svg)]()
+
+---
+
+## Project Status
+
+🟢 **Status:** Beta Operacional
+
+| Campo            | Valor                                                                       |
+| ---------------- | --------------------------------------------------------------------------- |
+| Versión          | 1.0 Beta                                                                    |
+| Estado           | Baseline congelada                                                          |
+| Arquitectura     | Congelada                                                                   |
+| Implementación   | Parcial                                                                     |
+| Uso interno      | Aprobado                                                                    |
+| Producción       | Asistida                                                                    |
+| Modo actual      | Operación y mejora continua                                                 |
+| Próximo objetivo | Validar impacto en producción sobre CSAT, resolución y eficiencia operativa |
+
+FIN Architect Enterprise entra oficialmente en su fase de operación y mejora continua basada en evidencia. La baseline v1.0 Beta está congelada: la arquitectura de 12 módulos, las 9 herramientas MCP implementadas, y los modelos de scoring FIS y PCS son la referencia estable desde la cual se inicia la validación operacional. El foco a partir de esta versión es ejecutar el sistema sobre conversaciones reales, medir su impacto, y acumular evidencia para informar la evolución hacia v2.0.
+
+---
+
+## Descripción
+
+FIN Architect Enterprise es una plataforma de inteligencia operacional para equipos de CX que supervisan agentes de IA. Proporciona herramientas para auditar, evaluar, simular y mejorar el comportamiento del agente Lia de Loggro, operado sobre Intercom.
+
+## Arquitectura Enterprise
+
+El sistema está compuesto por 12 módulos en 3 capas:
+
+**Capa 1 — Ejecución (9 herramientas MCP activas):**
+- `audit_guideline` — Audita si una pauta se aplicó correctamente
+- `optimize_guideline` — Propone mejoras a pautas existentes
+- `classify_guideline` — Clasifica pautas por tipo, complejidad y producto
+- `detect_conflicts` — Detecta pautas contradictorias o redundantes
+- `score_guideline` — Calcula el FIN Intelligence Score (FIS) por conversación
+- `simulate_fin` — Simula el comportamiento óptimo de Lia
+- `generate_guideline` — Genera nuevas pautas desde patrones detectados
+- `extract_guidelines` — Extrae pautas implícitas de conversaciones históricas
+- `architect_review` — Orquestador principal del pipeline completo
+
+**Capa 2 — Orquestación:**
+- `architect_review` integra todas las herramientas en un pipeline de revisión end-to-end
+
+**Capa 3 — Inteligencia (diseñados, pendientes de implementación):**
+- `fin_intelligence_review()` — Revisión inteligente con análisis temporal y clustering
+- FIN Continuous Learning Engine — Ciclo OBSERVE→LEARN automatizado
+- CSAT Improvement Engine — Predicción y mejora del Predicted CSAT Score (PCS)
+
+## Documentación
+
+| Documento | Descripción |
+|-----------|-------------|
+| `FIN_ARCHITECT_ENTERPRISE_v1.0_BETA.md` | **Documento de cierre oficial** — referencia canónica de v1.0 Beta |
+| `FIN_ARCHITECT_ENTERPRISE.md` | Blueprint completo del producto (v1.1) |
+| `FIN_INTELLIGENCE_REVIEW_ARCHITECTURE.md` | Arquitectura de `fin_intelligence_review()` |
+| `FIN_CONTINUOUS_LEARNING_ENGINE.md` | Diseño del motor de aprendizaje continuo |
+| `KNOWLEDGE_DIGITAL_TWIN.md` | Inventario completo de 1,036 artículos KB |
+| `CHANGELOG.md` | Historial de versiones |
+
+## Datos
+
+| Archivo | Descripción |
+|---------|-------------|
+| `dataset_fin_25_conversaciones.json` | 25 conversaciones Restobar anotadas (36 campos) |
+| `knowledge_inventory.json` | 1,036 artículos KB con metadatos completos |
+
+## Uso
+
+```bash
+# Iniciar servidor MCP
+python server.py
+
+# El servidor expone las 9 herramientas MCP via SSE en el puerto configurado
+# Conectar desde Claude con el MCP configurado en settings
+```
+
+## Roadmap Enterprise
+
+| Versión | Objetivo | Criterio de entrada |
+|---------|----------|---------------------|
+| v1.0 Beta (actual) | Baseline congelada, inicio de operación | — |
+| v1.1 | Calibración FIS + datasets Pymes y Nómina | Correlación FIS-humano ≥ 0.75 |
+| v2.0 | Implementación CLE + CIE | 3/4 productos con dataset; 8 semanas de uso activo |
+| Enterprise | Plataforma multi-producto completa | PCS validado; primer ciclo de mejora completado |
 
 ---
 
@@ -19,7 +104,7 @@ The goal is not automation for its own sake. It is architectural discipline: eve
 
 ---
 
-## Architecture
+## Technical Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -204,15 +289,16 @@ Before the Decision Engine, analytical logic was duplicated across every tool. `
 
 | Metric | Value |
 |--------|-------|
-| Version | 1.0.0 |
-| MCP Tools | 15 |
+| Version | 1.0 Beta |
+| MCP Tools | 15 (9 active, 6 in design) |
 | Decision Engine functions | 34 |
 | Decision Engine constants | 45 |
 | Decision Engine lines | 1,264 |
 | Server lines | 6,634 |
 | Duplicate lines eliminated | ~1,500 |
 | Architecture sprints | 3 |
-| Release status | READY |
+| Release status | Beta Operacional |
+| Final Acceptance Test score | 64/100 |
 
 ### Architecture Sprints
 
@@ -226,7 +312,7 @@ Before the Decision Engine, analytical logic was duplicated across every tool. `
 
 ## Roadmap
 
-### v1.0 — Current (Architecture Certified)
+### v1.0 Beta — Current (Baseline Congelada)
 - [x] 15 MCP tools across 6 modules
 - [x] Decision Engine as single source of truth
 - [x] KDE scoring (12 criteria) for knowledge articles
@@ -235,18 +321,20 @@ Before the Decision Engine, analytical logic was duplicated across every tool. `
 - [x] ROI-ranked recommendation engine
 - [x] Executive dashboard
 - [x] Full architectural audit and cleanup
+- [x] FIN Architect Enterprise v1.0 Beta documentation
 
 ### v1.1 — Next
 - [ ] Structured test suite for all 34 Decision Engine functions
 - [ ] Batch processing mode for large article repositories
 - [ ] Coverage gap auto-detection with category suggestions
-- [ ] Resolve 2 orphaned functions (`detect_guideline_events`, `guideline_priority_from_risk`)
+- [ ] Calibración FIS + datasets Pymes y Nómina (correlación FIS-humano ≥ 0.75)
 
 ### v2.0 — Future
 - [ ] Persistent knowledge graph across sessions
 - [ ] Automated guideline lifecycle management (draft → review → approved → deprecated)
 - [ ] Multi-language support beyond Spanish/English
-- [ ] Integration with ticketing and escalation systems
+- [ ] FIN Continuous Learning Engine (CLE) — ciclo OBSERVE→LEARN
+- [ ] CSAT Improvement Engine (CIE) — predicción y mejora del PCS
 
 ---
 
@@ -254,13 +342,24 @@ Before the Decision Engine, analytical logic was duplicated across every tool. `
 
 ```
 fin-architect-mcp/
-├── decision_engine.py     # Analytical core — 34 functions, 45 constants, 1,264 lines
-├── server.py              # MCP server — 15 tools, 6,634 lines
-├── main.py                # FastAPI health endpoint
-├── requirements.txt       # Dependencies
-├── docs/
-│   └── PROJECT_CONTEXT.md # Architecture context and sprint history
-└── README.md              # This file
+├── decision_engine.py                    # Analytical core — 34 functions, 45 constants
+├── server.py                             # MCP server — 15 tools
+├── main.py                               # FastAPI health endpoint
+├── requirements.txt                      # Dependencies
+├── CHANGELOG.md                          # Version history
+├── FIN_ARCHITECT_ENTERPRISE.md           # Product blueprint v1.1
+├── FIN_ARCHITECT_ENTERPRISE_v1.0_BETA.md # Official v1.0 Beta closure document
+├── FIN_INTELLIGENCE_REVIEW_ARCHITECTURE.md
+├── FIN_CONTINUOUS_LEARNING_ENGINE.md
+├── KNOWLEDGE_DIGITAL_TWIN.md            # 1,036 KB articles inventory
+├── dataset_fin_25_conversaciones.json   # 25 annotated conversations
+├── knowledge_inventory.json             # Full KB inventory with metadata
+├── loggro-incidents-portal/             # Portal Interno de Incidencias (standalone)
+│   ├── ARCHITECTURE.md
+│   ├── backend/                         # Node.js + Express + SQLite
+│   └── frontend/                        # React + Vite + Tailwind CSS
+└── docs/
+    └── PROJECT_CONTEXT.md               # Architecture context and sprint history
 ```
 
 ### Dependencies
@@ -300,4 +399,4 @@ Built for the FIN support operations architecture team.
 
 ---
 
-*FIN Architect MCP v1.0.0 — Architecture certified. Decision Engine validated. Ready for production.*
+*FIN Architect MCP — v1.0 Beta Operacional. Baseline congelada. Decision Engine validado. Listo para operación.*
