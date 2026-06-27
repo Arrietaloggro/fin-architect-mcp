@@ -112,11 +112,11 @@ async function run() {
       description: 'Validation test record',
       status: 'success',
       intercom_ticket_id: 'TEST-VALIDATE-001',
-      intercom_ticket_url: null,
-      error_message: null,
-      ip_address: null,
-      user_agent: null,
-      response_time_ms: null,
+      intercom_ticket_url: undefined,
+      error_message: undefined,
+      ip_address: undefined,
+      user_agent: undefined,
+      response_time_ms: undefined,
     });
     assert(id > 0, 'Insert failed');
     const record = TicketHistoryModel.findById(id);

@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "intercom:discover": "ts-node --transpile-only src/scripts/intercom-discover.ts",
+    "intercom:test": "ts-node --transpile-only src/scripts/intercom-test.ts",
+    "validate": "ts-node --transpile-only src/tests/validate.ts"
   },
   "dependencies": {
     "axios": "^1.7.2",
