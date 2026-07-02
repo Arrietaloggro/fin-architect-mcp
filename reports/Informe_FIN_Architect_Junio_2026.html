@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Informe Ejecutivo FIN Architect — Junio 2026</title>
+<style>
+@page {
+  size: A4;
+  margin: 24mm 18mm 20mm 18mm;
+  @bottom-center { content: "FIN Architect · Informe Ejecutivo Junio 2026   —   Página " counter(page) " de " counter(pages); font-size: 8.5px; color:#9a9992; font-family: system-ui, sans-serif; }
+}
+@page cover { margin: 0; @bottom-center { content: none; } @top-right { content: none; } }
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html,body{margin:0;padding:0;}
+body{
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color:#0b0b0b; font-size:11.3px; line-height:1.55;
+}
+:root{
+  --s1:#2a78d6; --s2:#1baf7a; --s3:#eda100; --s4:#008300; --s5:#4a3aa7; --s6:#e34948; --s7:#e87ba4; --s8:#eb6834;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --navy:#0d2b4e; --navy2:#123a66; --ink2:#52514e; --muted:#898781; --grid:#e1e0d9;
+}
+h1,h2,h3,h4{font-family:system-ui,sans-serif; color:var(--navy); margin:0 0 8px;}
+.section{page-break-before: always; padding-top:2mm;}
+.section:first-of-type{page-break-before: auto;}
+.sec-kicker{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--s1);font-weight:800;margin-bottom:4px;}
+.sec-title{font-size:22px;font-weight:800;color:var(--navy);border-bottom:3px solid var(--s1);padding-bottom:10px;margin-bottom:16px;}
+.sub{font-size:14px;font-weight:700;color:var(--navy2);margin:18px 0 8px;}
+p{margin:0 0 9px;color:#2a2a28;}
+table{width:100%;border-collapse:collapse;margin:10px 0 14px;font-size:10.3px;}
+th{background:var(--navy);color:#fff;padding:6px 8px;text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;}
+td{padding:6px 8px;border-bottom:1px solid var(--grid);vertical-align:top;}
+tr:nth-child(even) td{background:#f7f8fa;}
+.callout{background:#f2f7fd;border-left:4px solid var(--s1);border-radius:0 8px 8px 0;padding:10px 14px;margin:12px 0;font-size:10.6px;color:#1c3a5c;}
+.callout.warn{background:#fff8e8;border-left-color:var(--warning);color:#6b4e00;}
+.callout.crit{background:#fdeeee;border-left-color:var(--critical);color:#7a1f1f;}
+.callout.good{background:#eefaf1;border-left-color:var(--good);color:#0b5c2c;}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:9px;font-weight:800;}
+.badge-alta{background:#fde8e8;color:#a3221f;}
+.badge-media{background:#fff3d6;color:#8a5a00;}
+.badge-baja{background:#e6f7ee;color:#0c6b3a;}
+.badge-excelente{background:#e6f7ee;color:#0c6b3a;}
+.badge-buena{background:#e8f1fc;color:#164c8c;}
+.badge-regular{background:#fff3d6;color:#8a5a00;}
+.badge-deficiente{background:#fde8e8;color:#a3221f;}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 16px;}
+.kpi{background:#f7f8fa;border:1px solid var(--grid);border-radius:8px;padding:9px 10px;}
+.kpi .l{font-size:8px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:.3px;}
+.kpi .v{font-size:17px;font-weight:800;color:var(--navy);}
+.kpi .s{font-size:8.5px;color:var(--ink2);}
+ul,ol{margin:6px 0 12px;padding-left:20px;}
+li{margin-bottom:4px;}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.finding{border-left:3px solid var(--s1);background:#fafbfc;border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:8px;}
+.finding.crit{border-left-color:var(--critical);background:#fef7f7;}
+.finding.warn{border-left-color:var(--warning);background:#fffcf3;}
+.finding.good{border-left-color:var(--good);background:#f5fbf7;}
+.finding h4{margin:0 0 3px;font-size:10.8px;color:#1a1a1a;}
+.finding p{margin:0;font-size:10px;color:var(--ink2);}
+.small{font-size:9.5px;color:var(--muted);}
+.toc-list{list-style:none;padding:0;margin:0;counter-reset:toc;}
+.toc-list li{counter-increment:toc;display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px dotted var(--grid);}
+.toc-list li::before{content:counter(toc,decimal-leading-zero);font-weight:800;color:var(--s1);font-size:13px;width:26px;flex-shrink:0;}
+.toc-list .t{font-weight:700;color:var(--navy);font-size:12.5px;}
+.toc-list .d{font-size:9.5px;color:var(--muted);display:block;margin-top:1px;}
+.footnote-box{margin-top:16px;padding:10px 12px;background:#f7f8fa;border-radius:8px;font-size:9px;color:var(--muted);border:1px solid var(--grid);}
+
+/* ---------- COVER ---------- */
+.cover{
+  page:cover; page-break-after: always;
+  height:297mm; width:210mm; margin:0 auto;
+  background: linear-gradient(160deg, #0a1f3a 0%, #0d2b4e 38%, #123a66 68%, #1a5a9e 100%);
+  color:#fff; position:relative; overflow:hidden;
+  display:flex; flex-direction:column; justify-content:space-between;
+  padding:26mm 20mm;
+}
+.cover::before{
+  content:""; position:absolute; top:-120px; right:-120px; width:420px;height:420px;border-radius:50%;
+  background:radial-gradient(circle, rgba(255,255,255,.10), transparent 70%);
+}
+.cover::after{
+  content:""; position:absolute; bottom:-160px; left:-100px; width:480px;height:480px;border-radius:50%;
+  background:radial-gradient(circle, rgba(42,120,214,.35), transparent 70%);
+}
+.cover-top{display:flex;align-items:center;gap:14px;position:relative;z-index:2;}
+.cover-mark{width:58px;height:58px;border-radius:14px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;}
+.cover-brand{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.75);}
+.cover-mid{position:relative;z-index:2;}
+.cover-mid .eyebrow{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:#8fc0f2;font-weight:700;margin-bottom:14px;}
+.cover-mid h1{color:#fff;font-size:44px;line-height:1.12;margin:0 0 14px;font-weight:800;}
+.cover-mid h2{color:rgba(255,255,255,.82);font-size:17px;font-weight:400;margin:0 0 30px;max-width:480px;line-height:1.5;}
+.cover-meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:520px;}
+.cover-meta div{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:12px 14px;}
+.cover-meta .l{font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.6);margin-bottom:4px;}
+.cover-meta .v{font-size:13px;font-weight:700;color:#fff;}
+.cover-bottom{position:relative;z-index:2;border-top:1px solid rgba(255,255,255,.2);padding-top:14px;display:flex;justify-content:space-between;font-size:9.5px;color:rgba(255,255,255,.65);}
+.cover-confidential{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);padding:4px 12px;border-radius:999px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;}
+
+/* TOC page */
+.toc-page{page-break-after: always;}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ COVER ============================================================ -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="cover-mark">FIN</div>
+    <div class="cover-brand">Loggro · Operaciones CX</div>
+  </div>
+  <div class="cover-mid">
+    <div class="eyebrow">Informe Ejecutivo Oficial</div>
+    <h1>FIN Architect<br>Junio 2026</h1>
+    <h2>Diagnóstico integral del sistema de gobernanza, auditoría y mejora continua del agente conversacional FIN (Lia) — pautas, atributos inteligentes, escalamientos, base de conocimiento y hallazgos operativos del mes.</h2>
+    <div class="cover-meta">
+      <div><div class="l">Periodo cubierto</div><div class="v">1 – 30 de junio de 2026</div></div>
+      <div><div class="l">Fecha de emisión</div><div class="v">2 de julio de 2026</div></div>
+      <div><div class="l">Alcance de datos</div><div class="v">29 conversaciones reales auditadas</div></div>
+      <div><div class="l">Estado del sistema</div><div class="v">Beta · Score FAT 64/100</div></div>
+    </div>
+  </div>
+  <div class="cover-bottom">
+    <span>FIN Architect MCP — Plataforma de inteligencia operacional para IA conversacional</span>
+    <span class="cover-confidential">Uso interno · Dirección y Líderes de Producto</span>
+  </div>
+</div>
+
+<!-- ============================================================ TOC ============================================================ -->
+<div class="toc-page">
+  <div class="sec-kicker">Documento</div>
+  <div class="sec-title">Índice</div>
+  <ul class="toc-list">
+    <li><div><span class="t">Resumen Ejecutivo</span><span class="d">Estado general, hallazgos clave, riesgos y oportunidades del mes</span></div></li>
+    <li><div><span class="t">Estado General del Mes</span><span class="d">Qué se construyó y qué se auditó en junio 2026</span></div></li>
+    <li><div><span class="t">Principales Hallazgos</span><span class="d">Los 8 hallazgos con mayor impacto sobre el negocio</span></div></li>
+    <li><div><span class="t">Rendimiento General de FIN</span><span class="d">Calidad, tiempos de respuesta y desenlaces sobre la muestra auditada</span></div></li>
+    <li><div><span class="t">Análisis por Producto</span><span class="d">Restobar vs. Alojamientos — cobertura y comparativo</span></div></li>
+    <li><div><span class="t">Análisis por Categoría</span><span class="d">8 categorías temáticas reales, frecuencia y severidad</span></div></li>
+    <li><div><span class="t">Temas más frecuentes</span><span class="d">Motivos de contacto ordenados por frecuencia e impacto</span></div></li>
+    <li><div><span class="t">Incidencias más frecuentes</span><span class="d">Los casos de mayor riesgo documentado del mes</span></div></li>
+    <li><div><span class="t">Consultas repetitivas</span><span class="d">Motivos con 2 o más ocurrencias reales</span></div></li>
+    <li><div><span class="t">Rendimiento de las Pautas</span><span class="d">55 pautas identificadas, clasificadas Excelente a Deficiente</span></div></li>
+    <li><div><span class="t">Rendimiento de los Atributos</span><span class="d">Precisión, ambigüedad y gestión recomendada por atributo</span></div></li>
+    <li><div><span class="t">Escalamientos</span><span class="d">Correctos, evitables, motivos y oportunidades de reducción</span></div></li>
+    <li><div><span class="t">Oportunidades de Automatización</span><span class="d">10 automatizaciones priorizadas por impacto</span></div></li>
+    <li><div><span class="t">Nuevas Pautas Recomendadas</span><span class="d">7 pautas nuevas con objetivo, justificación e impacto</span></div></li>
+    <li><div><span class="t">Nuevos Atributos Recomendados</span><span class="d">10 atributos inteligentes propuestos con evidencia</span></div></li>
+    <li><div><span class="t">Mejoras para Base de Conocimiento</span><span class="d">1,036 artículos — huecos, duplicados y plan de optimización</span></div></li>
+    <li><div><span class="t">Riesgos Detectados</span><span class="d">Riesgos operativos, de churn y de cobertura</span></div></li>
+    <li><div><span class="t">Plan de Acción para Julio</span><span class="d">Roadmap priorizado: alta, media y baja prioridad</span></div></li>
+    <li><div><span class="t">Conclusiones</span><span class="d">Síntesis del diagnóstico de junio</span></div></li>
+    <li><div><span class="t">Recomendaciones para Dirección</span><span class="d">Decisiones sugeridas para líderes de producto y operaciones</span></div></li>
+  </ul>
+  <div class="footnote-box">
+    <b>Nota metodológica del documento completo:</b> este informe se construyó exclusivamente con datos reales extraídos por el propio proyecto FIN Architect desde Intercom (dataset de 25 conversaciones + auditoría de 5 conversaciones = 29 conversaciones únicas, inventario de 1,036 artículos de Base de Conocimiento, y el historial real de commits/documentación del proyecto). No se generaron cifras estimadas: donde un indicador no cuenta con dato real disponible, se declara explícitamente como <b>NO DISPONIBLE</b>. Toda cifra citada en este documento es trazable a su fuente original.
+  </div>
+</div>
+
+<!-- ============================================================ 1. RESUMEN EJECUTIVO ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">01 · Síntesis</div>
+  <div class="sec-title">Resumen Ejecutivo</div>
+
+  <p>Junio de 2026 fue el mes de <b>construcción integral</b> de FIN Architect MCP, la plataforma que gobierna, audita y mejora el sistema de pautas y conocimiento del agente conversacional FIN ("Lia") de Loggro. En siete días de desarrollo activo (24–30 de junio) se implementaron 15 herramientas de auditoría, se consolidó un motor de decisión centralizado, se inventarió por completo la Base de Conocimiento (1,036 artículos) y se auditaron en profundidad <b>29 conversaciones reales</b> de FIN extraídas directamente de Intercom.</p>
+
+  <div class="kpi-grid">
+    <div class="kpi"><div class="l">Conversaciones auditadas</div><div class="v">29</div><div class="s">25 dataset + 5 auditoría profunda</div></div>
+    <div class="kpi"><div class="l">Calidad diagnóstico</div><div class="v">47.4/100</div><div class="s">Muestra de 25 casos escalados</div></div>
+    <div class="kpi"><div class="l">Calidad conversacional</div><div class="v">68.6/100</div><div class="s">Muestra de 5 casos (rango 38–95)</div></div>
+    <div class="kpi"><div class="l">Madurez del software (FAT)</div><div class="v">64/100</div><div class="s">Veredicto: Beta (27 jun 2026)</div></div>
+  </div>
+
+  <div class="sub">Estado general del mes</div>
+  <p>El proyecto ejecutó su propio <b>Final Acceptance Test</b> el 27 de junio de 2026, certificando un score de madurez de <b>64/100 (veredicto Beta)</b>, con fortalezas claras en arquitectura (90/100) y documentación (95/100), pero brechas relevantes en cobertura de productos (25/100) y calibración de los modelos de calidad (FIS y PCS definidos, no calibrados con datos reales).</p>
+
+  <div class="sub">Evolución respecto a periodos anteriores</div>
+  <p><b>NO DISPONIBLE.</b> Junio es el primer mes de existencia del proyecto — no hay ningún artefacto de mayo de 2026 o anterior contra el cual comparar. Cualquier afirmación de mejora o retroceso respecto a un periodo anterior sería inventada; este informe reporta únicamente el estado alcanzado durante junio.</p>
+
+  <div class="sub">Hallazgos más importantes</div>
+  <ul>
+    <li>De 25 conversaciones escaladas analizadas: <b>36% terminaron resueltas</b>, 20% sin resolver, 16% derivadas a área especializada, 16% parcialmente resueltas, y casos aislados de abandono y queja formal.</li>
+    <li>Se documentaron <b>7 patrones de error recurrentes</b> de FIN, con evidencia y frecuencia exacta (ver Sección 4).</li>
+    <li>Las pautas de comunicación (tono, continuidad, claridad) funcionan de forma <b>excelente y consistente</b> (76–92% de activación sin fallas); el problema real está concentrado en el <i>timing</i> de escalamiento y en preguntas de diagnóstico faltantes.</li>
+    <li>La Base de Conocimiento tiene 1,036 artículos: 44 en borrador, 7 sin descripción, 7 grupos duplicados y 5 huérfanos — pero 0 marcados como obsoletos por antigüedad.</li>
+  </ul>
+
+  <div class="sub">Riesgos encontrados</div>
+  <ul>
+    <li><b>Riesgo de churn no gestionado:</b> RIOPARK BEACH HOTEL amenazó explícitamente con migrar a Siigo tras un escalamiento fallido (calificación 1/5, riesgo de churn 70/100).</li>
+    <li><b>Cobertura limitada a un producto:</b> 27 de 29 casos analizados son de Restobar; Pymes y Nómina no tienen ningún caso auditado.</li>
+    <li><b>Modelos de scoring sin calibrar:</b> el FIS y el PCS existen como diseño matemático pero no como sistema validado con datos reales.</li>
+  </ul>
+
+  <div class="sub">Oportunidades detectadas</div>
+  <ul>
+    <li>12 artículos de Base de Conocimiento priorizados, cada uno con evidencia real de un caso que los necesitó.</li>
+    <li>Un caso benchmark de excelencia documentado (Alojamientos, 95/100, resolución en 5 minutos, calificación 5/5) utilizable como plantilla de entrenamiento.</li>
+    <li>Las 29 conversaciones ya auditadas manualmente constituyen el primer set de referencia para calibrar el FIS.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ 2. ESTADO GENERAL DEL MES ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">02 · Contexto</div>
+  <div class="sec-title">Estado General del Mes</div>
+  <p>FIN Architect MCP nació y se construyó en su totalidad durante junio de 2026: los 120 commits del repositorio se concentran entre el 24 y el 30 de junio. La siguiente tabla resume lo construido y su estado al cierre del mes:</p>
+  <table>
+    <tr><th>Entregable</th><th>Estado al 30 de junio</th></tr>
+    <tr><td>15 herramientas MCP de auditoría (Guideline Core + Knowledge Core)</td><td>✅ Implementadas y operativas</td></tr>
+    <tr><td>Motor de decisión centralizado (34 funciones, 45 constantes)</td><td>✅ Consolidado — 3 sprints de refactor, ~1,353 líneas duplicadas eliminadas</td></tr>
+    <tr><td>Inventario completo de Base de Conocimiento</td><td>✅ 1,036 artículos catalogados</td></tr>
+    <tr><td>Dataset de entrenamiento (25 conversaciones Restobar, 36 campos c/u)</td><td>✅ Completo</td></tr>
+    <tr><td>Auditoría profunda de 5 conversaciones recientes (19 campos c/u)</td><td>✅ Completa (incluye Alojamientos)</td></tr>
+    <tr><td>Blueprints de arquitectura (Enterprise v1.1, Intelligence Review, Continuous Learning Engine)</td><td>🔵 Diseñados — no implementados en código</td></tr>
+    <tr><td>Auditoría operacional de agente humano (Diana Zarate, 54 casos)</td><td>✅ Completa</td></tr>
+    <tr><td>Portal Interno de Incidencias Loggro (proyecto relacionado)</td><td>✅ MVP desplegado a producción — sin datos de uso aún</td></tr>
+  </table>
+  <div class="callout">
+    <b>Resultado del Final Acceptance Test (27 de junio de 2026):</b> Score de madurez global <b>64/100 — Veredicto 🟠 BETA</b>. El sistema quedó formalmente congelado para nuevas funcionalidades, entrando en modo de "validación operacional": se puede ejecutar y analizar, pero no se ampliará hasta calibrar los módulos existentes con datos reales.
+  </div>
+  <table>
+    <tr><th>Dimensión evaluada</th><th>Peso</th><th>Score</th></tr>
+    <tr><td>Implementación funcional</td><td>30%</td><td>75/100</td></tr>
+    <tr><td>Cobertura de productos</td><td>20%</td><td>25/100</td></tr>
+    <tr><td>Calidad del conocimiento</td><td>15%</td><td>85/100</td></tr>
+    <tr><td>Arquitectura e integración</td><td>15%</td><td>90/100</td></tr>
+    <tr><td>Datos de entrenamiento</td><td>10%</td><td>60/100</td></tr>
+    <tr><td>Documentación</td><td>10%</td><td>95/100</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 3. PRINCIPALES HALLAZGOS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">03 · Diagnóstico</div>
+  <div class="sec-title">Principales Hallazgos</div>
+  <div class="finding good"><h4>1. El núcleo comunicativo de FIN es sólido</h4><p>Las pautas de personalidad, continuidad y claridad progresiva se activan en 76–92% de los 25 casos analizados, sin fallas de ejecución documentadas.</p></div>
+  <div class="finding crit"><h4>2. La fricción de escalamiento es el problema de mayor severidad</h4><p>En el caso más grave del mes (RIOPARK), FIN retrasó 3 turnos el escalamiento pese a solicitud explícita y repetida del usuario, coincidiendo con la calificación más baja registrada (1/5).</p></div>
+  <div class="finding warn"><h4>3. Falta de pregunta de bifurcación temprana en 1 de cada 5 casos</h4><p>6 de 29 conversaciones (20.7%) muestran una primera respuesta incorrecta por no preguntar la variable que define el camino correcto (¿pagado o pendiente?, ¿con o sin recetas?, ¿qué versión tiene?).</p></div>
+  <div class="finding crit"><h4>4. Riesgo de churn no detectado pese a señal disponible</h4><p>La cuenta RIOPARK tenía el atributo de plan "EXTRACCION" (señal explícita de proceso de baja) visible en los datos; el sistema no activó ningún protocolo de retención.</p></div>
+  <div class="finding warn"><h4>5. Escalamientos con timing tardío, no incorrecto</h4><p>En 4 de 25 casos, la decisión de escalar fue correcta pero se ejecutó 2-3 turnos más tarde de lo óptimo, con impacto directo en la satisfacción del cliente.</p></div>
+  <div class="finding good"><h4>6. Existe un caso benchmark de excelencia documentado</h4><p>Una conversación de Alojamientos alcanzó 95/100 de calidad, resolución en 5 minutos y calificación 5 estrellas — candidata a plantilla de entrenamiento.</p></div>
+  <div class="finding warn"><h4>7. La Base de Conocimiento tiene huecos activos no capturados por el criterio de obsolescencia</h4><p>0 artículos se marcan como obsoletos por antigüedad, pero 12 huecos de contenido reales fueron identificados directamente por conversaciones sin artículo de respaldo.</p></div>
+  <div class="finding"><h4>8. Cobertura operacional concentrada en un solo producto</h4><p>93.1% de la muestra analizada (27/29) es de Restobar; Pymes y Nómina —que concentran el 60.7% de los artículos de KB— no tienen ningún caso auditado todavía.</p></div>
+</div>
+
+<!-- ============================================================ 4. RENDIMIENTO GENERAL DE FIN ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">04 · Desempeño</div>
+  <div class="sec-title">Rendimiento General de FIN</div>
+  <p>Sobre las 29 conversaciones reales auditadas (25 del dataset principal — 100% escaladas a humano por diseño de muestra — más 5 de auditoría profunda con Alojamientos), el desempeño observado es el siguiente:</p>
+  <table>
+    <tr><th>Indicador</th><th>Valor real</th><th>Fuente / alcance</th></tr>
+    <tr><td>Calidad de diagnóstico promedio</td><td>47.4/100 (mín. 20, máx. 70)</td><td>25 conversaciones escaladas</td></tr>
+    <tr><td>Calidad conversacional promedio</td><td>68.6/100 (rango 38–95)</td><td>5 conversaciones de auditoría profunda</td></tr>
+    <tr><td>Tiempo promedio a primera respuesta (TTFA)</td><td>11.4 min (máx. 43.6 min)</td><td>25 conversaciones</td></tr>
+    <tr><td>Nivel de frustración promedio del cliente</td><td>43.6/100</td><td>25 conversaciones</td></tr>
+    <tr><td>Riesgo de churn promedio</td><td>20.6/100 (máx. 70/100)</td><td>25 conversaciones</td></tr>
+    <tr><td>Desenlace: resuelto</td><td>9/25 (36%)</td><td>Conversaciones escaladas</td></tr>
+    <tr><td>Desenlace: sin resolver</td><td>5/25 (20%)</td><td>Conversaciones escaladas</td></tr>
+    <tr><td>Desenlace: parcialmente resuelto</td><td>4/25 (16%)</td><td>Conversaciones escaladas</td></tr>
+    <tr><td>Desenlace: escalado a área especializada</td><td>4/25 (16%)</td><td>Conversaciones escaladas</td></tr>
+    <tr><td>Desenlace: abandono / queja formal / sin completar</td><td>3/25 (12%)</td><td>Conversaciones escaladas</td></tr>
+  </table>
+  <div class="callout warn"><b>Importante:</b> estas cifras describen el comportamiento de FIN <b>en la muestra analizada</b>, que fue seleccionada específicamente porque escaló o porque era reciente — no es una muestra aleatoria del volumen total. El proyecto no cuenta con un registro del volumen total de conversaciones de FIN en junio, por lo que la tasa real de resolución autónoma sobre el total del mes es <b>NO DISPONIBLE</b>.</div>
+</div>
+
+<!-- ============================================================ 5. ANÁLISIS POR PRODUCTO ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">05 · Cobertura</div>
+  <div class="sec-title">Análisis por Producto</div>
+  <table>
+    <tr><th>Producto</th><th>Conversaciones analizadas</th><th>% de la muestra</th><th>Artículos KB</th><th>Calidad promedio (audit. 5)</th></tr>
+    <tr><td>Restobar</td><td>27</td><td>93.1%</td><td>246</td><td>56.7/100 (n=3)</td></tr>
+    <tr><td>Alojamientos</td><td>2</td><td>6.9%</td><td>89</td><td>86.5/100 (n=2)</td></tr>
+    <tr><td>Pymes</td><td>0</td><td>0%</td><td>443</td><td>N/D</td></tr>
+    <tr><td>Nómina</td><td>0</td><td>0%</td><td>165</td><td>N/D</td></tr>
+  </table>
+  <p>El comparativo Restobar vs. Alojamientos usa una muestra muy pequeña (n=3 y n=2 respectivamente) y <b>no debe generalizarse</b> — se reporta como evidencia puntual, no como conclusión estadística. Con esa salvedad, los 2 casos de Alojamientos muestran mejor desenlace promedio, incluyendo el único caso benchmark de 95/100 del mes.</p>
+  <div class="callout"><b>Brecha crítica de cobertura:</b> Pymes (443 artículos KB, 42.8% del total) y Nómina (165 artículos, 15.9%) no tienen ningún caso auditado. El propio FAT del proyecto calificó la "Cobertura de productos" en 25/100 — la dimensión más débil del sistema.</div>
+</div>
+
+<!-- ============================================================ 6. ANÁLISIS POR CATEGORÍA ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">06 · Temas</div>
+  <div class="sec-title">Análisis por Categoría</div>
+  <table>
+    <tr><th>Categoría temática</th><th>Frecuencia (de 25)</th><th>% muestra</th><th>Severidad promedio (1–5)</th><th>Criticidad</th></tr>
+    <tr><td>Facturación Electrónica</td><td>6</td><td>20.7%</td><td>2.33</td><td>Media</td></tr>
+    <tr><td>Facturación POS</td><td>4</td><td>13.8%</td><td>3.75</td><td><b>Alta</b></td></tr>
+    <tr><td>Comanda / Sincronización</td><td>4</td><td>13.8%</td><td>2.75</td><td>Media-Alta</td></tr>
+    <tr><td>Configuración Operativa</td><td>4</td><td>13.8%</td><td>2.00</td><td>Baja-Media</td></tr>
+    <tr><td>Suscripción y Pagos</td><td>3</td><td>10.3%</td><td>2.67</td><td><b>Alta</b> (riesgo de churn)</td></tr>
+    <tr><td>Cierre de Caja</td><td>2</td><td>6.9%</td><td>3.50</td><td>Alta</td></tr>
+    <tr><td>Gestión de Pedidos</td><td>1</td><td>3.4%</td><td>3.00</td><td>Media</td></tr>
+    <tr><td>Integración con Terceros</td><td>1</td><td>3.4%</td><td>3.00</td><td>Media</td></tr>
+  </table>
+  <p>Facturación electrónica y configuración operativa concentran el mayor volumen, pero <b>Facturación POS tiene la severidad promedio más alta (3.75/5)</b> — incluye el único caso de severidad 5 del mes (queja formal por facturas represadas). Suscripción y Pagos, aunque de volumen moderado, concentra el mayor riesgo de churn documentado (caso RIOPARK, 70/100).</p>
+</div>
+
+<!-- ============================================================ 7. TEMAS MÁS FRECUENTES ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">07 · Motivos de contacto</div>
+  <div class="sec-title">Temas más Frecuentes</div>
+  <p>Con 29 casos reales no existen 20 motivos distintos con volumen estadístico; se listan los motivos reales agrupados y ordenados por frecuencia, cada uno trazable a su conversación de origen.</p>
+  <table>
+    <tr><th>#</th><th>Motivo</th><th>Frecuencia</th><th>Producto</th><th>Impacto / Criticidad</th></tr>
+    <tr><td>1</td><td>Habilitar / activar / vincular facturación electrónica</td><td>6</td><td>Restobar</td><td>Media</td></tr>
+    <tr><td>2</td><td>Anulación / duplicación / visibilidad de facturas POS</td><td>4</td><td>Restobar</td><td>Alta (queja formal en 1 caso)</td></tr>
+    <tr><td>3</td><td>Comanda: impresión, instalación, versión, acceso</td><td>4</td><td>Restobar</td><td>Media-Alta</td></tr>
+    <tr><td>4</td><td>Configuración operativa (costos, combos, proveedores, logo)</td><td>4</td><td>Restobar</td><td>Baja-Media</td></tr>
+    <tr><td>5</td><td>Suscripción / pagos (vencimiento, cobro automático, PSE)</td><td>3</td><td>Restobar</td><td>Alta (riesgo de churn)</td></tr>
+    <tr><td>6</td><td>Cierre de caja / cuadre</td><td>2</td><td>Restobar</td><td>Alta (bloqueo operativo)</td></tr>
+    <tr><td>7</td><td>Gestión de pedidos / ventas (eliminar, borrar)</td><td>2</td><td>Restobar</td><td>Media</td></tr>
+    <tr><td>8</td><td>Facturación electrónica combinada / importación de servicios</td><td>2</td><td>Alojamientos</td><td>Baja (1 caso benchmark)</td></tr>
+    <tr><td>9</td><td>Integración con terceros (Siigo)</td><td>1</td><td>Restobar</td><td>Media</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 8. INCIDENCIAS MÁS FRECUENTES ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">08 · Riesgo</div>
+  <div class="sec-title">Incidencias más Frecuentes</div>
+  <table>
+    <tr><th>#</th><th>Incidencia</th><th>Caso</th><th>Impacto documentado</th></tr>
+    <tr><td>1</td><td>Suscripción vencida bloqueando operación activa con clientes en el local</td><td>RIOPARK BEACH HOTEL</td><td>Amenaza de churn explícita, calificación 1/5</td></tr>
+    <tr><td>2</td><td>Facturas represadas sin sincronizar a Pymes</td><td>MR BRASA ASADERO</td><td>Queja formal escrita, riesgo de churn 60/100, calificación 1/5</td></tr>
+    <tr><td>3</td><td>Duplicación de factura con faltante real en cuadre de caja</td><td>TEXAS BARRIL & PARRILLA</td><td>Riesgo contable/operativo, sin resolución confirmada</td></tr>
+    <tr><td>4</td><td>Versión de comanda desactualizada no diagnosticada</td><td>CARLOS GALVEZ SANCHEZ</td><td>37 min de TTFA, calificación 2/5, sin resolución</td></tr>
+    <tr><td>5</td><td>Problema de impresión de comanda con rechazo de instalación remota</td><td>Mocca Pasión Por El Cafe</td><td>Calificación 2/5, sin resolución</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 9. CONSULTAS REPETITIVAS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">09 · Recurrencia</div>
+  <div class="sec-title">Consultas Repetitivas</div>
+  <table>
+    <tr><th>Motivo</th><th>Ocurrencias reales</th><th>% de la muestra (29)</th></tr>
+    <tr><td>Facturación Electrónica</td><td>6</td><td>20.7%</td></tr>
+    <tr><td>Facturación POS</td><td>4</td><td>13.8%</td></tr>
+    <tr><td>Comanda / Sincronización</td><td>4</td><td>13.8%</td></tr>
+    <tr><td>Configuración Operativa</td><td>4</td><td>13.8%</td></tr>
+    <tr><td>Suscripción y Pagos</td><td>3</td><td>10.3%</td></tr>
+  </table>
+  <p>Adicionalmente, <b>ALLEGRO COMIDA ITALIANA</b> contactó 3 veces en el periodo cubierto por el dataset (siempre por temas de facturación electrónica) y <b>ANIBAL ROA SANDOVAL</b> contactó al menos 3 veces entre ambas fuentes de datos — señal de fricción recurrente no resuelta de forma definitiva en el primer contacto.</p>
+</div>
+
+<!-- ============================================================ 10. RENDIMIENTO DE LAS PAUTAS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">10 · Guideline Core</div>
+  <div class="sec-title">Rendimiento de las Pautas</div>
+  <p>Se identificaron <b>55 pautas distintas</b> activas sobre las 25 conversaciones del dataset principal. Las 15 más frecuentes:</p>
+  <table>
+    <tr><th>Pauta</th><th>Frecuencia (de 25)</th></tr>
+    <tr><td>[884013] Personalidad</td><td>23</td></tr>
+    <tr><td>[805165] Detección emocional</td><td>20</td></tr>
+    <tr><td>[878283] Continuidad de la respuesta</td><td>19</td></tr>
+    <tr><td>[880386] Adaptación comunicativa</td><td>19</td></tr>
+    <tr><td>[881675] Eliminación de ruido</td><td>19</td></tr>
+    <tr><td>[883970] Claridad progresiva</td><td>19</td></tr>
+    <tr><td>[878286] Precisión comunicativa</td><td>18</td></tr>
+    <tr><td>[657943] Resumen</td><td>16</td></tr>
+    <tr><td>[884123] Escalamiento humano</td><td>16</td></tr>
+    <tr><td>[878262] Reducción de ruido</td><td>15</td></tr>
+  </table>
+  <div class="sub">Clasificación de desempeño</div>
+  <table>
+    <tr><th>Clasificación</th><th>Pautas</th><th>Justificación</th></tr>
+    <tr><td><span class="badge badge-excelente">Excelente</span></td><td>[884013] Personalidad, [878283] Continuidad, [883970] Claridad progresiva</td><td>76–92% de activación sin fallas documentadas</td></tr>
+    <tr><td><span class="badge badge-buena">Buena</span></td><td>[657943] Resumen, [878262] Reducción de ruido, [884062] Uso de KB</td><td>Alta frecuencia, sin fallas de ejecución directamente atribuidas</td></tr>
+    <tr><td><span class="badge badge-regular">Regular</span></td><td>[628310] Escalamiento por persistencia, [884123] Escalamiento humano</td><td>Fallan en el <i>timing</i> en 4–8 de 25 casos donde debían activarse</td></tr>
+    <tr><td><span class="badge badge-deficiente">Deficiente</span></td><td>Escalamiento por solicitud de atención humana (caso RIOPARK)</td><td>Ignorada 2 veces seguidas pese a instrucción explícita y repetida</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 11. RENDIMIENTO DE LOS ATRIBUTOS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">11 · Clasificación inteligente</div>
+  <div class="sec-title">Rendimiento de los Atributos</div>
+  <table>
+    <tr><th>Atributo</th><th>Frecuencia (de 25)</th></tr>
+    <tr><td>Urgency Baja</td><td>18</td></tr>
+    <tr><td>IACR Usuario Básico</td><td>11</td></tr>
+    <tr><td>Validación Parcial</td><td>9</td></tr>
+    <tr><td>IACR Riesgo Operativo</td><td>4</td></tr>
+    <tr><td>IACR Cambio de Intención</td><td>4</td></tr>
+    <tr><td>Correctamente Validado</td><td>4</td></tr>
+  </table>
+  <div class="sub">Gestión recomendada por atributo</div>
+  <table>
+    <tr><th>Atributo</th><th>Acción</th><th>Justificación</th></tr>
+    <tr><td>IACR Cambio de Intención</td><td><span class="badge badge-media">Modificar</span></td><td>Detecta el síntoma pero no dispara re-diagnóstico</td></tr>
+    <tr><td>Urgency (Baja/Media)</td><td><span class="badge badge-alta">Dividir</span></td><td>Falta nivel Crítica/P1 para emergencias operativas</td></tr>
+    <tr><td>Nivel de insatisfacción</td><td><span class="badge badge-buena">Mantener (forzar captura)</span></td><td>Existe pero queda vacío en la mayoría de casos</td></tr>
+    <tr><td>IACR Usuario Básico/Avanzado</td><td><span class="badge badge-media">Fusionar en nivel_usuario</span></td><td>Falta granularidad y enrutamiento L1/L2</td></tr>
+    <tr><td>Riesgo de Churn</td><td><span class="badge badge-buena">Mantener (conectar a plan)</span></td><td>Falla crítica no detectada en caso EXTRACCION</td></tr>
+  </table>
+  <div class="callout"><b>NO DISPONIBLE:</b> una tasa de precisión porcentual agregada de atributos sobre el volumen total de junio. Lo reportado son fallas puntuales documentadas con evidencia de caso, no un porcentaje estadístico poblacional.</div>
+</div>
+
+<!-- ============================================================ 12. ESCALAMIENTOS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">12 · Derivación a humano</div>
+  <div class="sec-title">Escalamientos</div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="l">Escalados en la muestra</div><div class="v">25/29</div><div class="s">86.2% — sesgado por diseño de muestra</div></div>
+    <div class="kpi"><div class="l">Correctos y oportunos</div><div class="v">6</div><div class="s">Convs. 02,06,11,17,19,21</div></div>
+    <div class="kpi"><div class="l">Correctos pero tardíos</div><div class="v">5</div><div class="s">Convs. 01,05,07,12 + audit conv.5</div></div>
+    <div class="kpi"><div class="l">Potencialmente evitables</div><div class="v">6 (24%)</div><div class="s">Convs. 03,04,09,16,20,24</div></div>
+  </div>
+  <div class="sub">Motivos principales</div>
+  <table>
+    <tr><th>Motivo</th><th>Frecuencia (de 25)</th></tr>
+    <tr><td>Solicitud explícita de agente humano</td><td>9</td></tr>
+    <tr><td>Requiere acceso a backend/admin</td><td>6</td></tr>
+    <tr><td>Requiere área especializada</td><td>4</td></tr>
+    <tr><td>Persistencia del problema</td><td>4</td></tr>
+    <tr><td>Emergencia operativa</td><td>2</td></tr>
+  </table>
+  <div class="sub">Oportunidades para reducir escalamiento</div>
+  <ol>
+    <li>Verificar variables de bifurcación obvias antes de la primera respuesta — ataca el 24% de escalamientos potencialmente evitables.</li>
+    <li>Reducir el umbral de escalamiento por persistencia de 3 a 2 intentos fallidos.</li>
+    <li>Ejecutar el escalamiento en el primer o segundo pedido explícito del usuario, sin contrapreguntas adicionales.</li>
+    <li>Adjuntar automáticamente artículo de KB y resumen de diagnóstico en la nota de escalamiento al agente humano.</li>
+  </ol>
+  <div class="callout warn"><b>Referencia — no es desempeño de FIN:</b> el flujo humano posterior al escalamiento (agente Diana Zarate, inbox Diagnóstico Restobar, 1-25 junio) tiene SLA de escalación interna &lt;24h de <b>78.4% vs. meta de 90% — no cumplida</b>; el SLA de resolución ≤3 días sí se cumple al 100%.</div>
+</div>
+
+<!-- ============================================================ 13. OPORTUNIDADES DE AUTOMATIZACIÓN ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">13 · Automatización</div>
+  <div class="sec-title">Oportunidades de Automatización</div>
+  <table>
+    <tr><th>#</th><th>Oportunidad</th><th>Prioridad</th></tr>
+    <tr><td>1</td><td>Bifurcación automática por estado del sistema antes de responder</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>2</td><td>Escalamiento inmediato sin contrapregunta ante solicitud repetida</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>3</td><td>Detección automática de plan "EXTRACCION" → protocolo de retención</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>4</td><td>Reducir umbral de escalamiento por persistencia (3→2 intentos)</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>5</td><td>Verificación de versión/estado de componente antes de instalación</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>6</td><td>Adjuntar KB + resumen automático en la nota de escalamiento</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>7</td><td>Cierre de brecha de 12 artículos de KB priorizados</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>8</td><td>Auto-alerta si un caso permanece sin gestión &gt;48h</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>9</td><td>Calibración del FIN Intelligence Score con las 29 conversaciones ya auditadas</td><td><span class="badge badge-alta">Alta (habilitador)</span></td></tr>
+    <tr><td>10</td><td>Expandir dataset de entrenamiento a Pymes y Nómina</td><td><span class="badge badge-media">Media</span></td></tr>
+  </table>
+  <p class="small">Las automatizaciones de mayor alcance (fin_intelligence_review, Continuous Learning Engine, CSAT Improvement Engine) ya están diseñadas en detalle mas no implementadas — el propio proyecto decidió congelar su desarrollo hasta calibrar los módulos actuales.</p>
+</div>
+
+<!-- ============================================================ 14. NUEVAS PAUTAS RECOMENDADAS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">14 · Propuesta</div>
+  <div class="sec-title">Nuevas Pautas Recomendadas</div>
+  <table>
+    <tr><th>Pauta</th><th>Objetivo</th><th>Impacto esperado</th><th>Prioridad</th></tr>
+    <tr><td>Escalamiento inmediato ante solicitud repetida</td><td>Escalar sin preguntas adicionales al 2º pedido de agente en &lt;3 mensajes</td><td>Reduce el patrón de error más frecuente (convs. 01,05,07,12)</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>Protocolo de interrupción de servicio activa</td><td>Escalar de inmediato si el sistema está bloqueado y hay operación en curso</td><td>Reduce riesgo de churn en el segmento de mayor impacto económico</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>Protocolo de retención para cuentas "EXTRACCION"</td><td>Escalar a comercial/retención en el primer turno si el plan indica baja</td><td>Convierte una señal ya disponible en acción preventiva</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>Verificación de bifurcación antes de responder</td><td>Preguntar la variable que define la ruta correcta en el primer turno</td><td>Ataca el 20.7% de respuestas iniciales incorrectas de la muestra</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>Escalamiento L2 para usuarios expertos con pasos agotados</td><td>Enrutar directo a soporte técnico L2 sin repetir flujo básico</td><td>Previene el escalamiento de severidad máxima observado (5/5)</td><td><span class="badge badge-media">Media-Alta</span></td></tr>
+    <tr><td>Declaración temprana de limitación del sistema</td><td>Declarar limitaciones en el turno siguiente, no seguir explicando lo que no aplica</td><td>Reduce conversaciones innecesariamente largas</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>Detección de loop de repetición</td><td>Escalar automáticamente si se repite la misma respuesta 2+ veces</td><td>Reduce el patrón "repetición sin escalar" (convs. 07,12)</td><td><span class="badge badge-media">Media</span></td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 15. NUEVOS ATRIBUTOS RECOMENDADOS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">15 · Propuesta</div>
+  <div class="sec-title">Nuevos Atributos Recomendados</div>
+  <table>
+    <tr><th>Nombre</th><th>Descripción</th><th>Regla de clasificación</th><th>Beneficio esperado</th></tr>
+    <tr><td><code>nivel_usuario</code></td><td>Nivel de experiencia técnica del cliente</td><td>Enum básico/intermedio/avanzado/experto, detectado por frases explícitas</td><td>Enrutamiento directo a L2 para expertos</td></tr>
+    <tr><td><code>estado_bloqueo_sistema</code></td><td>Tipo de bloqueo activo del sistema</td><td>Cruce de URL + menciones de operación en curso</td><td>Dispara protocolo de interrupción de servicio</td></tr>
+    <tr><td><code>hipotesis_agotada</code></td><td>Marca hipótesis diagnóstica ya negada por el usuario</td><td>Se activa cuando el usuario contradice una suposición previa</td><td>Evita reiterar hipótesis descartadas</td></tr>
+    <tr><td><code>usuario_primera_vez</code></td><td>Cliente en su primer día de uso</td><td>Frases tipo "es mi primer día", "no sé cómo funciona"</td><td>Deriva a capacitación en vez de soporte técnico</td></tr>
+    <tr><td><code>consulta_vs_accion</code></td><td>Distingue intención de informarse vs. ejecutar</td><td>Enum consulta/acción, preguntado antes de dar pasos operativos</td><td>Evita instrucciones irrelevantes a la intención real</td></tr>
+    <tr><td><code>solicitud_funcionalidad_inexistente</code></td><td>Registra pedidos de funciones que el sistema no tiene</td><td>Se activa cuando FIN confirma que la función no existe</td><td>Alimenta backlog de producto con evidencia real</td></tr>
+    <tr><td><code>riesgo_churn_activo</code></td><td>Cruza plan de cuenta con contenido de la conversación</td><td>Si plan = EXTRACCION → forzar valor alto</td><td>Cierra la brecha de detección de churn (caso RIOPARK)</td></tr>
+    <tr><td><code>integracion_tercero_requerida</code></td><td>Marca dependencia de proveedor externo</td><td>Mención de Siigo, DIAN, pasarela de pago</td><td>Fija expectativas correctas de tiempo de resolución</td></tr>
+    <tr><td><code>opcion_no_encontrada</code></td><td>Usuario no encuentra opción esperada</td><td>Frase tipo "no veo esa opción" tras instrucción de FIN</td><td>Señal temprana de cambio de permisos/versión</td></tr>
+    <tr><td><code>version_componente</code></td><td>Versión de la app/componente declarada</td><td>Campo de texto libre en el primer turno de diagnóstico</td><td>Evita reinstalaciones innecesarias</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 16. MEJORAS PARA BASE DE CONOCIMIENTO ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">16 · Knowledge Core</div>
+  <div class="sec-title">Mejoras para Base de Conocimiento</div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="l">Total de artículos</div><div class="v">1,036</div><div class="s">Snapshot 26 jun 2026</div></div>
+    <div class="kpi"><div class="l">Publicados</div><div class="v">992</div><div class="s">95.8% del total</div></div>
+    <div class="kpi"><div class="l">Borradores</div><div class="v">44</div><div class="s">4.2% del total</div></div>
+    <div class="kpi"><div class="l">Obsoletos (por fecha)</div><div class="v">0</div><div class="s">Criterio automático limitado — ver nota</div></div>
+  </div>
+  <div class="sub">Artículos faltantes priorizados (evidencia real de caso)</div>
+  <ol>
+    <li>"Mesa sigue abierta después de facturar: cómo cancelar pedido sin doble cobro"</li>
+    <li>"Limitación de combos: zona de impresión única — alternativa con ítems separados"</li>
+    <li>"Cómo cobrar desechables en pedidos para llevar sin impuesto INC"</li>
+    <li>"Ícono de nube en Restobar: qué significa y cómo resolverlo"</li>
+    <li>"Caja del día anterior sin cerrar: procedimiento de cierre"</li>
+    <li>"Planes FE: límites de documentos por plan y cómo adquirir más"</li>
+    <li>"Protocolo de emergencia por suscripción vencida durante operación activa"</li>
+    <li>"Alternativas de pago cuando PSE falla"</li>
+  </ol>
+  <div class="sub">Procesos repetitivos / duplicados</div>
+  <p>7 grupos de artículos duplicados (14 artículos) — consistentemente entre un producto definido y la categoría "Desconocido". Ejemplos: "Cómo visualizar e imprimir el comprobante diario de caja" (Restobar/Desconocido), "Cómo consultar el informe de ventas por documento" (Restobar/Desconocido).</p>
+  <div class="sub">Información confusa / gaps estructurales</div>
+  <ul>
+    <li>93 artículos (9%) sin producto asignado ("Desconocido"), que concentran 18 de los 44 borradores (41%).</li>
+    <li>5 artículos huérfanos sin colección asignada.</li>
+    <li>7 artículos sin descripción, reduciendo la capacidad de FIN de evaluar su relevancia antes de citarlos.</li>
+  </ul>
+  <div class="callout"><b>Recomendación principal:</b> reasignar producto a los 93 artículos "Desconocido", fusionar los 7 grupos duplicados, y crear los 8 artículos priorizados con evidencia real de necesidad — en ese orden de esfuerzo/impacto.</div>
+</div>
+
+<!-- ============================================================ 17. RIESGOS DETECTADOS ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">17 · Gestión de riesgo</div>
+  <div class="sec-title">Riesgos Detectados</div>
+  <table>
+    <tr><th>Riesgo</th><th>Evidencia</th><th>Severidad</th></tr>
+    <tr><td>Churn no gestionado en cuentas en proceso de baja</td><td>RIOPARK, plan EXTRACCION, amenaza explícita de migrar a Siigo</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>Cobertura operacional limitada a un producto</td><td>27/29 casos son Restobar; Pymes/Nómina sin ningún caso</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>Modelos de scoring sin calibrar (FIS, PCS)</td><td>Definidos matemáticamente, sin validación con datos reales</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>Dependencia total de Intercom sin almacenamiento propio</td><td>Toda la inteligencia se calcula bajo demanda vía API</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>Fricción de escalamiento documentada</td><td>3 turnos de retraso pese a solicitud explícita repetida (RIOPARK)</td><td><span class="badge badge-alta">Alta</span></td></tr>
+    <tr><td>SLA humano de escalación interna no cumplido</td><td>78.4% vs. meta 90% (flujo posterior, agente Diana Zarate)</td><td><span class="badge badge-media">Media</span></td></tr>
+    <tr><td>Huecos activos de Base de Conocimiento</td><td>8-12 artículos priorizados sin contenido de respaldo</td><td><span class="badge badge-media">Media</span></td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 18. PLAN DE ACCIÓN PARA JULIO ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">18 · Roadmap</div>
+  <div class="sec-title">Plan de Acción para Julio 2026</div>
+  <div class="sub"><span class="badge badge-alta">Alta prioridad</span></div>
+  <table>
+    <tr><th>Iniciativa</th><th>Esfuerzo</th><th>Impacto esperado</th><th>Reducción de escalamientos</th></tr>
+    <tr><td>Calibrar el FIS con 50 conversaciones reales vs. evaluación humana</td><td>Alto</td><td>Habilita medición automática de calidad</td><td>No aplica directamente (prerrequisito)</td></tr>
+    <tr><td>Pauta de escalamiento inmediato + protocolo de interrupción activa</td><td>Bajo</td><td>Elimina el patrón de error de mayor frecuencia</td><td>Directo — 4+ casos</td></tr>
+    <tr><td>Activar detección de plan "EXTRACCION"</td><td>Bajo-Medio</td><td>Convierte señal disponible en acción preventiva</td><td>Indirecto</td></tr>
+    <tr><td>Crear los artículos de KB priorizados</td><td>Medio</td><td>Cierra huecos de contenido activos</td><td>Directo</td></tr>
+    <tr><td>Verificación de bifurcación antes de primera respuesta</td><td>Medio</td><td>Reduce 20.7% de errores de la muestra</td><td>Directo</td></tr>
+  </table>
+  <div class="sub"><span class="badge badge-media">Media prioridad</span></div>
+  <table>
+    <tr><th>Iniciativa</th><th>Esfuerzo</th><th>Impacto esperado</th><th>Reducción de escalamientos</th></tr>
+    <tr><td>Expandir dataset de entrenamiento a Pymes y Nómina</td><td>Alto</td><td>Condición de entrada a v2.0</td><td>No aplica directamente</td></tr>
+    <tr><td>Fusionar duplicados de KB y reasignar artículos "Desconocido"</td><td>Medio</td><td>Reduce fragmentación</td><td>Indirecto</td></tr>
+    <tr><td>Incorporar nivel_usuario, estado_bloqueo_sistema, consulta_vs_accion</td><td>Medio</td><td>Mejora precisión de enrutamiento</td><td>Indirecto</td></tr>
+    <tr><td>Adjuntar KB + resumen automático en notas de escalamiento</td><td>Bajo-Medio</td><td>Reduce tiempo de gestión del agente humano</td><td>No reduce volumen</td></tr>
+  </table>
+  <div class="sub"><span class="badge badge-baja">Baja prioridad</span></div>
+  <table>
+    <tr><th>Iniciativa</th><th>Esfuerzo</th><th>Impacto esperado</th><th>Reducción de escalamientos</th></tr>
+    <tr><td>Publicar o retirar los 44 artículos en borrador</td><td>Bajo</td><td>Limpieza de inventario</td><td>Ninguna directa</td></tr>
+    <tr><td>Revisar criterio de obsolescencia de KB</td><td>Bajo</td><td>Mejor detección de huecos no capturados</td><td>Ninguna directa</td></tr>
+    <tr><td>Usar caso benchmark como plantilla de entrenamiento</td><td>Bajo</td><td>Referencia de calidad reutilizable</td><td>Ninguna directa</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ 19. CONCLUSIONES ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">19 · Síntesis</div>
+  <div class="sec-title">Conclusiones</div>
+  <p>Junio de 2026 estableció, por primera vez, un lenguaje técnico compartido y una infraestructura de auditoría real para el sistema conversacional FIN. El diagnóstico obtenido sobre 29 conversaciones reales muestra un patrón claro: <b>el núcleo comunicativo de FIN es sólido</b> (pautas de tono y personalidad funcionan de forma consistente), mientras que <b>el riesgo real está concentrado en dos puntos específicos y accionables</b> — la velocidad de escalamiento ante solicitud explícita, y la ausencia de preguntas de bifurcación antes de la primera respuesta.</p>
+  <p>El sistema de auditoría (FIN Architect MCP) alcanzó una madurez de software de 64/100 (Beta), con arquitectura sólida pero cobertura de producto limitada a Restobar. Esa limitación de cobertura es, en sí misma, la principal restricción para generalizar cualquier hallazgo de este informe al resto del ecosistema FIN.</p>
+  <p>No existe línea base de meses anteriores para medir evolución, y no existe today un tablero de KPIs de FIN calibrado (FIS, PCS) poblado con datos reales — dos vacíos que julio debe empezar a cerrar, según el propio roadmap que el proyecto se fijó al congelarse el 27 de junio.</p>
+</div>
+
+<!-- ============================================================ 20. RECOMENDACIONES PARA DIRECCIÓN ============================================================ -->
+<div class="section">
+  <div class="sec-kicker">20 · Para la junta</div>
+  <div class="sec-title">Recomendaciones para Dirección</div>
+  <ol>
+    <li><b>Aceptar el congelamiento del framework</b> decidido por el propio proyecto — no ampliar funcionalidades hasta calibrar los modelos existentes con datos reales.</li>
+    <li><b>Priorizar la calibración del FIS sobre la expansión de producto.</b> Sin un modelo de calidad calibrado, cada decisión sobre FIN seguirá dependiendo de auditoría manual caso por caso, como la que sustenta este informe.</li>
+    <li><b>Tratar la muestra de 29 conversaciones como el primer lote de entrenamiento</b>, no como el diagnóstico definitivo. El sesgo de la muestra es intencional y útil para encontrar patrones de fallo, pero no permite afirmar la tasa real de éxito de FIN sobre el volumen total.</li>
+    <li><b>Ejecutar las 5 iniciativas de alta prioridad de julio de inmediato</b> — no requieren desarrollo nuevo, solo ajuste de pautas existentes y contenido de conocimiento ya identificado.</li>
+    <li><b>Planificar la expansión a Pymes y Nómina, y la calibración del PCS, como objetivos de trimestre</b> — los plazos que el propio equipo fijó (60 y 90 días) exceden julio.</li>
+  </ol>
+  <div class="callout good"><b>Impacto esperado:</b> si las iniciativas de alta prioridad se ejecutan en julio, el resultado más medible será la reducción directa de los tres patrones de error ya identificados con nombre y evidencia — demora de escalamiento, falta de pregunta de bifurcación, y huecos de conocimiento activos — que en conjunto explican más del 40% de los casos problemáticos documentados en junio.</div>
+
+  <div class="footnote-box">
+    <b>Fuentes reales utilizadas en este informe:</b> dataset_fin_25_conversaciones.md/csv/json · auditoria_fin_5_conversaciones.md · knowledge_inventory.json/csv · KNOWLEDGE_DIGITAL_TWIN.md · FIN_ARCHITECT_ENTERPRISE_v1.0_BETA.md · FIN_ARCHITECT_ENTERPRISE.md · reports/auditoria_diana_zarate_jun2026.md · CHANGELOG.md / docs/CHANGELOG.md · historial de commits (git log). Documento generado el 2 de julio de 2026 para uso interno de Loggro — Operaciones CX.
+  </div>
+</div>
+
+</body>
+</html>

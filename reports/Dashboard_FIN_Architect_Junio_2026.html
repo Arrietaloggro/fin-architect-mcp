@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIN Architect — Dashboard Ejecutivo Junio 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --surface-1:#fcfcfb; --page:#f4f5f7; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --border:rgba(11,11,11,0.10);
+  --s1:#2a78d6; --s2:#1baf7a; --s3:#eda100; --s4:#008300; --s5:#4a3aa7; --s6:#e34948; --s7:#e87ba4; --s8:#eb6834;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --navy:#0d2b4e; --navy-2:#123a66;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(11,11,11,.04), 0 4px 16px rgba(11,11,11,.06);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  background:var(--page); color:var(--ink); line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--s1);}
+.topbar{
+  background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 55%,#1a5a9e 100%);
+  color:#fff; padding:22px 28px; position:sticky; top:0; z-index:50;
+  box-shadow:0 2px 12px rgba(0,0,0,.18);
+}
+.topbar-inner{max-width:1400px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand-mark{
+  width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,.14);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;letter-spacing:.5px;
+  border:1px solid rgba(255,255,255,.25);
+}
+.brand h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px;}
+.brand p{margin:2px 0 0;font-size:12.5px;color:rgba(255,255,255,.72);}
+.topbar-meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.chip{
+  background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.22);
+  padding:6px 12px;border-radius:999px;font-size:12px;color:#fff;white-space:nowrap;
+}
+select.filter{
+  background:#fff;color:var(--ink);border:none;border-radius:8px;padding:8px 12px;
+  font-size:13px;font-weight:600;cursor:pointer;box-shadow:var(--shadow);
+}
+.disclaimer-banner{
+  max-width:1400px;margin:16px auto 0;padding:14px 18px;background:#fff7e6;
+  border:1px solid #f2d78a;border-left:4px solid var(--warning);border-radius:10px;
+  font-size:13px;color:#5a4a12;
+}
+.disclaimer-banner b{color:#7a5c00;}
+.nav-tabs{
+  max-width:1400px;margin:16px auto 0;display:flex;gap:6px;flex-wrap:wrap;padding:0 0 4px;
+}
+.nav-tabs a{
+  font-size:12.5px;color:var(--ink-2);text-decoration:none;background:#fff;border:1px solid var(--border);
+  padding:7px 12px;border-radius:999px;white-space:nowrap;transition:.15s;
+}
+.nav-tabs a:hover{background:var(--s1);color:#fff;border-color:var(--s1);}
+main{max-width:1400px;margin:0 auto;padding:20px 20px 60px;}
+.kpi-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:26px;
+}
+.kpi-card{
+  background:var(--surface-1);border-radius:var(--radius);padding:18px 18px 16px;box-shadow:var(--shadow);
+  border:1px solid var(--border); position:relative; overflow:hidden;
+}
+.kpi-card .bar{position:absolute;left:0;top:0;bottom:0;width:4px;}
+.kpi-label{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px;}
+.kpi-value{font-size:30px;font-weight:800;color:var(--ink);line-height:1;}
+.kpi-sub{font-size:12px;color:var(--ink-2);margin-top:6px;}
+.kpi-note{font-size:10.5px;color:var(--muted);margin-top:4px;font-style:italic;}
+section.block{margin-bottom:34px;}
+.block-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap;gap:6px;}
+.block-head h2{font-size:19px;margin:0;color:var(--ink);}
+.block-head .tag{font-size:11px;color:#fff;background:var(--s1);padding:3px 10px;border-radius:999px;font-weight:700;}
+.grid-2{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.grid-2b{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media (max-width:900px){.grid-2,.grid-3,.grid-2b{grid-template-columns:1fr;}}
+.card{
+  background:var(--surface-1);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);
+  border:1px solid var(--border);
+}
+.card h3{margin:0 0 4px;font-size:14.5px;color:var(--ink);}
+.card .desc{font-size:11.5px;color:var(--muted);margin-bottom:12px;}
+.chart-wrap{position:relative;height:280px;}
+.chart-wrap.tall{height:340px;}
+.chart-wrap.short{height:220px;}
+.analysis{
+  margin-top:14px;padding:12px 14px;background:#f2f7fd;border-left:3px solid var(--s1);
+  border-radius:0 8px 8px 0;font-size:12.8px;color:#1c3a5c;
+}
+.analysis b{color:var(--navy);}
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--grid);}
+th{color:var(--muted);font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.4px;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--surface-1);}
+th:hover{color:var(--s1);}
+th.sort-asc::after{content:" \25B2";font-size:9px;}
+th.sort-desc::after{content:" \25BC";font-size:9px;}
+tbody tr:hover{background:#f6f9fd;}
+.table-scroll{max-height:420px;overflow:auto;border-radius:10px;}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;}
+.badge-alta{background:#fde8e8;color:#a3221f;}
+.badge-media{background:#fff3d6;color:#8a5a00;}
+.badge-baja{background:#e6f7ee;color:#0c6b3a;}
+.badge-excelente{background:#e6f7ee;color:#0c6b3a;}
+.badge-buena{background:#e8f1fc;color:#164c8c;}
+.badge-regular{background:#fff3d6;color:#8a5a00;}
+.badge-deficiente{background:#fde8e8;color:#a3221f;}
+.ranklist{list-style:none;margin:0;padding:0;}
+.ranklist li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--grid);}
+.ranklist li:last-child{border-bottom:none;}
+.rank-num{width:22px;height:22px;border-radius:6px;background:var(--s1);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.rank-bar-track{flex:1;height:8px;background:var(--grid);border-radius:4px;overflow:hidden;}
+.rank-bar-fill{height:100%;background:var(--s1);border-radius:4px;}
+.rank-val{font-size:12px;font-weight:700;color:var(--ink-2);width:70px;text-align:right;flex-shrink:0;}
+.progress-row{margin-bottom:14px;}
+.progress-row .pr-label{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;}
+.progress-row .pr-label b{color:var(--ink);}
+.progress-track{height:10px;background:var(--grid);border-radius:6px;overflow:hidden;}
+.progress-fill{height:100%;border-radius:6px;}
+.heatmap-table{width:100%;border-collapse:separate;border-spacing:3px;font-size:11px;}
+.heatmap-table th{background:none;position:static;font-size:10px;}
+.heatmap-cell{
+  text-align:center;padding:10px 4px;border-radius:6px;color:#fff;font-weight:700;min-width:34px;
+}
+.heat-row-label{text-align:right;padding-right:8px;font-size:11px;color:var(--ink-2);font-weight:600;white-space:nowrap;}
+.pillrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.pill{font-size:11px;background:#eef2f7;color:var(--ink-2);padding:4px 10px;border-radius:999px;}
+.finding-card{
+  border-radius:12px;padding:14px 16px;margin-bottom:10px;border-left:4px solid var(--s1);background:#fff;box-shadow:var(--shadow);
+}
+.finding-card.critical{border-left-color:var(--critical);background:#fff6f6;}
+.finding-card.warning{border-left-color:var(--warning);background:#fffaf0;}
+.finding-card.good{border-left-color:var(--good);background:#f3fbf5;}
+.finding-card h4{margin:0 0 5px;font-size:13.5px;}
+.finding-card p{margin:0;font-size:12.3px;color:var(--ink-2);}
+.reco-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;}
+.reco-card{background:#fff;border-radius:12px;padding:16px;box-shadow:var(--shadow);border-top:4px solid var(--s1);}
+.reco-card.p-alta{border-top-color:var(--critical);}
+.reco-card.p-media{border-top-color:var(--warning);}
+.reco-card.p-baja{border-top-color:var(--good);}
+.reco-card h4{margin:0 0 8px;font-size:14px;}
+.reco-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;font-size:11.5px;}
+.reco-meta div{background:#f7f8fa;border-radius:6px;padding:6px 8px;}
+.reco-meta span{display:block;color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;}
+footer{max-width:1400px;margin:0 auto;padding:24px 20px 60px;color:var(--muted);font-size:11.5px;text-align:center;}
+.small-note{font-size:11px;color:var(--muted);margin-top:6px;}
+.methodology{
+  background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px 18px;font-size:12.5px;color:var(--ink-2);
+}
+.methodology b{color:var(--ink);}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:#c9c9c2;border-radius:6px;}
+@media print{ .topbar,.nav-tabs,select.filter{display:none;} }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">FIN</div>
+      <div>
+        <h1>FIN Architect — Dashboard Ejecutivo</h1>
+        <p>Junio 2026 · Generado el 2 de julio de 2026 · Loggro Operaciones CX</p>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <span class="chip" id="chipTotal">29 conversaciones analizadas</span>
+      <span class="chip" id="chipFat">FAT software: 64/100 · Beta</span>
+      <label style="color:#fff;font-size:12px;">Filtrar por producto:
+        <select class="filter" id="productFilter" onchange="applyFilter()">
+          <option value="Todos">Todos</option>
+          <option value="Restobar">Restobar</option>
+          <option value="Alojamientos">Alojamientos</option>
+        </select>
+      </label>
+    </div>
+  </div>
+</div>
+
+<div class="disclaimer-banner">
+  <b>Nota metodológica:</b> Este dashboard usa exclusivamente datos reales extraídos de Intercom por el propio proyecto FIN Architect
+  (<code>dataset_fin_25_conversaciones.md</code> y <code>auditoria_fin_5_conversaciones.md</code>), consolidados en <b>29 conversaciones únicas</b>
+  (25 del dataset principal — 100% Restobar, 100% escaladas a humano — + 5 de auditoría profunda, con 1 caso compartido).
+  <b>No existe en el proyecto un registro del volumen total de chats de FIN en junio</b>: las cifras de este tablero son válidas
+  <b>sobre la muestra analizada</b>, no sobre el universo completo del mes. Donde un indicador no tiene dato real disponible, se declara explícitamente
+  como <b>NO DISPONIBLE</b> en vez de estimarse.
+</div>
+
+<div class="nav-tabs">
+  <a href="#kpis">KPIs</a>
+  <a href="#chats">Chats procesados</a>
+  <a href="#temas">Temas frecuentes</a>
+  <a href="#pautas">Pautas</a>
+  <a href="#atributos">Atributos</a>
+  <a href="#escalamientos">Escalamientos</a>
+  <a href="#resolucion">Resolución</a>
+  <a href="#tendencias">Tendencias</a>
+  <a href="#heatmap">Mapa de calor</a>
+  <a href="#comparativo">Comparativo</a>
+  <a href="#kb">Base de Conocimiento</a>
+  <a href="#tabla">Tabla dinámica</a>
+  <a href="#hallazgos">Hallazgos y alertas</a>
+  <a href="#recomendaciones">Recomendaciones</a>
+  <a href="#roadmap">Roadmap Julio</a>
+</div>
+
+<main>
+
+<!-- ============ KPIs ============ -->
+<section class="block" id="kpis">
+  <div class="block-head"><h2>Indicadores clave (KPIs)</h2><span class="tag">Muestra de 29 conversaciones</span></div>
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="bar" style="background:var(--s1)"></div>
+      <div class="kpi-label">Conversaciones analizadas</div><div class="kpi-value">29</div>
+      <div class="kpi-sub">25 dataset principal + 5 auditoría (1 compartida)</div></div>
+    <div class="kpi-card"><div class="bar" style="background:var(--critical)"></div>
+      <div class="kpi-label">Escalados en la muestra</div><div class="kpi-value">25/29</div>
+      <div class="kpi-sub">86.2% — sesgado por diseño de muestra</div>
+      <div class="kpi-note">No es la tasa real de escalamiento de FIN</div></div>
+    <div class="kpi-card"><div class="bar" style="background:var(--s2)"></div>
+      <div class="kpi-label">Calidad diagnóstico (25 casos)</div><div class="kpi-value">47.4<span style="font-size:15px;">/100</span></div>
+      <div class="kpi-sub">Mín. 20 · Máx. 70</div></div>
+    <div class="kpi-card"><div class="bar" style="background:var(--s5)"></div>
+      <div class="kpi-label">Calidad conversacional (5 casos)</div><div class="kpi-value">68.6<span style="font-size:15px;">/100</span></div>
+      <div class="kpi-sub">Rango 38–95</div></div>
+    <div class="kpi-card"><div class="bar" style="background:var(--s3)"></div>
+      <div class="kpi-label">TTFA promedio</div><div class="kpi-value">11.4<span style="font-size:15px;">min</span></div>
+      <div class="kpi-sub">Máx. 43.6 min (conv. 15)</div></div>
+    <div class="kpi-card"><div class="bar" style="background:var(--s4)"></div>
+      <div class="kpi-label">KB publicados</div><div class="kpi-value">992<span style="font-size:15px;">/1,036</span></div>
+      <div class="kpi-sub">95.8% publicado · 44 borradores</div></div>
+    <div class="kpi-card"><div class="bar" style="background:var(--s6)"></div>
+      <div class="kpi-label">Riesgo de churn máx.</div><div class="kpi-value">70<span style="font-size:15px;">/100</span></div>
+      <div class="kpi-sub">RIOPARK — amenaza explícita de migrar a Siigo</div></div>
+    <div class="kpi-card"><div class="bar" style="background:var(--navy)"></div>
+      <div class="kpi-label">Madurez del software (FAT)</div><div class="kpi-value">64<span style="font-size:15px;">/100</span></div>
+      <div class="kpi-sub">Veredicto: 🟠 Beta (27 jun 2026)</div></div>
+  </div>
+</section>
+
+<!-- ============ CHATS PROCESADOS ============ -->
+<section class="block" id="chats">
+  <div class="block-head"><h2>Chats procesados</h2><span class="tag">Bar · Doughnut</span></div>
+  <div class="grid-3">
+    <div class="card">
+      <h3>Chats por producto</h3><div class="desc">Distribución de las 29 conversaciones analizadas</div>
+      <div class="chart-wrap short"><canvas id="chartProducto"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Chats por categoría temática</h3><div class="desc">8 categorías identificadas (bar horizontal)</div>
+      <div class="chart-wrap short"><canvas id="chartCategoria"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Distribución por prioridad / urgencia</h3><div class="desc">Atributo Urgency detectado por FIN (25 casos)</div>
+      <div class="chart-wrap short"><canvas id="chartPrioridad"></canvas></div>
+    </div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> el 93.1% de la muestra (27/29) corresponde a Restobar; Alojamientos aparece con solo 2 casos y Pymes/Nómina no tienen ningún caso analizado.
+    <b>Por qué ocurrió:</b> el dataset de entrenamiento del proyecto se construyó únicamente sobre Restobar (confirmado en el FAT: cobertura de productos 25/100).
+    <b>Impacto:</b> cualquier conclusión de este dashboard sobre "FIN" en general debe leerse como "FIN en Restobar". <b>Recomendación:</b> expandir el dataset a Pymes y Nómina (objetivo ya fijado por el proyecto a 60 días) antes de generalizar hallazgos.
+  </div>
+</section>
+
+<!-- ============ TEMAS MÁS FRECUENTES ============ -->
+<section class="block" id="temas">
+  <div class="block-head"><h2>Temas más frecuentes</h2><span class="tag">Ranking · Horizontal Bar</span></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Top motivos de contacto (por categoría)</h3><div class="desc">Frecuencia real sobre 29 conversaciones — no existen 20 motivos distintos con volumen estadístico en la muestra</div>
+      <div class="chart-wrap tall"><canvas id="chartMotivos"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Top incidencias por impacto</h3><div class="desc">Casos con mayor severidad/riesgo documentado</div>
+      <div id="topIncidencias"></div>
+    </div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> facturación electrónica (6 casos, 20.7%) y configuración operativa (4 casos) concentran el mayor volumen; facturación POS tiene menor frecuencia (4) pero la <b>mayor severidad promedio (3.75/5)</b>.
+    <b>Por qué ocurrió:</b> los procesos de facturación (electrónica y POS) dependen de integraciones externas (DIAN, Pymes) que generan puntos de fallo fuera del control directo de FIN.
+    <b>Impacto:</b> son los temas con mayor riesgo de escalamiento y de insatisfacción (conv. 25 terminó en queja formal). <b>Recomendación:</b> priorizar la Sección de pautas 8.4 (verificación de bifurcación) y los artículos de KB de facturación en la Sección 10.
+  </div>
+  <div class="grid-2b" style="margin-top:16px;">
+    <div class="card">
+      <h3>Consultas repetidas (mismo motivo, ≥2 ocurrencias)</h3>
+      <ul class="ranklist" id="repeatedList"></ul>
+    </div>
+    <div class="card">
+      <h3>Top empresas por número de contactos</h3><div class="desc">Distribución real por empresa (29 conversaciones)</div>
+      <div class="chart-wrap short"><canvas id="chartEmpresas"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PAUTAS ============ -->
+<section class="block" id="pautas">
+  <div class="block-head"><h2>Rendimiento de las pautas</h2><span class="tag">Horizontal Bar · Clasificación</span></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Top 15 pautas más utilizadas</h3><div class="desc">Frecuencia real de activación sobre 25 conversaciones (55 pautas distintas identificadas)</div>
+      <div class="chart-wrap tall"><canvas id="chartPautas"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Clasificación de desempeño por pauta</h3><div class="desc">Excelente / Buena / Regular / Deficiente — con evidencia documentada</div>
+      <div id="pautasClasificacion"></div>
+    </div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> las pautas de comunicación (Personalidad, Continuidad, Claridad progresiva) se activan en 76–92% de los casos sin fallas de ejecución — son "Excelente". Las pautas de escalamiento (Escalamiento por persistencia, Escalamiento humano) fallan en su <b>timing</b> en 4-8 de 25 casos.
+    <b>Por qué ocurrió:</b> el umbral de activación de escalamiento por persistencia está fijado en 3 intentos fallidos; la evidencia muestra que debería ser 2.
+    <b>Impacto:</b> retraso de escalamiento correlaciona con las peores calificaciones documentadas (caso RIOPARK, 1/5). <b>Recomendación:</b> ver Sección 8.1 y 8.7 del informe — ajustar umbral y añadir detección de loop.
+  </div>
+</section>
+
+<!-- ============ ATRIBUTOS ============ -->
+<section class="block" id="atributos">
+  <div class="block-head"><h2>Rendimiento de los atributos inteligentes</h2><span class="tag">Horizontal Bar · Polar Area</span></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Top atributos detectados</h3><div class="desc">Frecuencia real sobre 25 conversaciones</div>
+      <div class="chart-wrap tall"><canvas id="chartAtributos"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Distribución IACR (categoría de riesgo/intención)</h3><div class="desc">Polar Area — 4 categorías reales detectadas</div>
+      <div class="chart-wrap tall"><canvas id="chartIACR"></canvas></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px;">
+    <h3>Gestión recomendada por atributo</h3><div class="desc">Mantener / Modificar / Dividir / Fusionar / Eliminar — con evidencia real de caso</div>
+    <div class="table-scroll"><table id="tableAtributosGestion"></table></div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> "IACR Usuario Básico" es el atributo dominante (11/25, 44%). "IACR Cambio de Intención" (4 casos) marca los casos donde FIN <b>perdió el hilo</b> de la conversación real.
+    <b>Por qué ocurrió:</b> el atributo detecta el síntoma correctamente pero no dispara ninguna acción de re-diagnóstico automático.
+    <b>Impacto:</b> en el caso más grave (RIOPARK), esto coincidió con un diagnóstico erróneo de permisos cuando la causa real era la suscripción vencida. <b>Recomendación:</b> modificar el atributo para forzar re-evaluación completa (Sección 5.4 del informe).
+  </div>
+</section>
+
+<!-- ============ ESCALAMIENTOS ============ -->
+<section class="block" id="escalamientos">
+  <div class="block-head"><h2>Escalamientos</h2><span class="tag">Doughnut · Stacked Bar</span></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>¿Escaló a agente humano?</h3><div class="desc">29 conversaciones analizadas</div>
+      <div class="chart-wrap short"><canvas id="chartEscalo"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Motivos principales de escalamiento</h3><div class="desc">25 conversaciones escaladas</div>
+      <div class="chart-wrap short"><canvas id="chartMotivosEsc"></canvas></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px;">
+    <h3>Resultado final por categoría temática</h3><div class="desc">Stacked bar — cruce real categoría × resultado (25 conversaciones)</div>
+    <div class="chart-wrap tall"><canvas id="chartStackedResCat"></canvas></div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> de 25 escalamientos, 9 (36%) terminan resueltos por el agente humano, pero 5 (20%) quedan sin resolver y 4 (16%) se derivan a un área especializada sin confirmación.
+    <b>Por qué ocurrió:</b> 6 de los 25 casos (24%) muestran evidencia textual de que el escalamiento pudo evitarse con una pregunta de bifurcación temprana.
+    <b>Impacto:</b> cada escalamiento evitable representa carga operativa para el equipo humano y tiempo adicional para el cliente. <b>Recomendación:</b> Sección 6.5 y 8.4 — verificación de variable de bifurcación antes de la primera respuesta.
+  </div>
+</section>
+
+<!-- ============ RESOLUCIÓN Y CONSULTAS REPETIDAS ============ -->
+<section class="block" id="resolucion">
+  <div class="block-head"><h2>Resolución</h2><span class="tag">Pie · Progress</span></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Desenlace final (25 conversaciones escaladas)</h3>
+      <div class="chart-wrap tall"><canvas id="chartResolucion"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Indicadores de cumplimiento (progress bars)</h3><div class="desc">Los únicos porcentajes reales calculables del mes</div>
+      <div id="progressBars"></div>
+    </div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> el SLA de escalación interna del flujo humano posterior (agente Diana Zarate, inbox Diagnóstico Restobar) es 78.4% vs. meta de 90% — <b>no cumplida</b>. El SLA de resolución ≤3 días sí se cumple al 100%.
+    <b>Por qué ocurrió:</b> 8 de 37 casos medibles superaron 24h en primera gestión, concentrados en colas de fin de semana y cambios de NIT.
+    <b>Impacto:</b> esta brecha es del flujo humano, no de FIN, pero afecta la experiencia total del cliente después del escalamiento. <b>Recomendación:</b> ver Sección 6.6 del informe — no se mezcla con el desempeño del bot.
+  </div>
+</section>
+
+<!-- ============ TENDENCIAS ============ -->
+<section class="block" id="tendencias">
+  <div class="block-head"><h2>Tendencias</h2><span class="tag">Line · Area</span></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Tendencia diaria de conversaciones analizadas</h3><div class="desc">Solo 3 fechas con datos reales — la muestra NO cubre todo junio de forma uniforme</div>
+      <div class="chart-wrap short"><canvas id="chartTendenciaDiaria"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Evolución de calidad de diagnóstico (cronológica)</h3><div class="desc">Área — 25 conversaciones ordenadas por fecha/hora real</div>
+      <div class="chart-wrap short"><canvas id="chartEvolucionCalidad"></canvas></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px;">
+    <h3>Tiempo de primera respuesta por conversación (TTFA)</h3><div class="desc">Área — 25 conversaciones, orden cronológico real</div>
+    <div class="chart-wrap tall"><canvas id="chartTTFA"></canvas></div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> 24 de las 25 conversaciones del dataset ocurrieron el 25-26 de junio (últimas 48h antes de la extracción); solo 1 es del 11 de junio.
+    <b>Por qué ocurrió:</b> la muestra se extrajo como snapshot puntual el 26 de junio, no como muestreo uniforme del mes.
+    <b>Impacto:</b> <b>no se puede afirmar si la calidad de FIN mejoró o empeoró durante junio</b> — la evolución cronológica mostrada es real pero cubre una ventana muy corta (fluctúa entre 20 y 70/100 sin tendencia clara). <b>Recomendación:</b> instrumentar extracción periódica (semanal) para poder medir tendencia real mes a mes.
+  </div>
+</section>
+
+<!-- ============ HEATMAP ============ -->
+<section class="block" id="heatmap">
+  <div class="block-head"><h2>Mapa de calor de incidencias (simulado)</h2><span class="tag">Categoría × Severidad</span></div>
+  <div class="card">
+    <h3>Frecuencia real: categoría temática × nivel de severidad (1–5)</h3><div class="desc">25 conversaciones — intensidad de color = número de casos</div>
+    <div style="overflow-x:auto;"><table class="heatmap-table" id="heatmapTable"></table></div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> "Facturación POS" concentra el único caso de severidad 5 (queja formal) y un caso de severidad 4; "Configuración Operativa" y "Facturación Electrónica" concentran severidad baja (2) con alta frecuencia.
+    <b>Por qué ocurrió:</b> los problemas de facturación POS involucran dinero real (faltantes de caja, duplicados) mientras que configuración operativa es mayormente informativa.
+    <b>Impacto:</b> facturación POS es la categoría de mayor riesgo reputacional por caso, aunque no la de mayor volumen. <b>Recomendación:</b> priorizar la pauta 8.2 (protocolo de interrupción de servicio) específicamente para esta categoría.
+  </div>
+</section>
+
+<!-- ============ COMPARATIVO ============ -->
+<section class="block" id="comparativo">
+  <div class="block-head"><h2>Comparativo entre productos</h2><span class="tag">Radar · Bar</span></div>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Severidad promedio por categoría (Radar)</h3><div class="desc">8 categorías reales — escala 1 (leve) a 5 (crítico)</div>
+      <div class="chart-wrap tall"><canvas id="chartRadarSeveridad"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Calidad promedio: Restobar vs. Alojamientos</h3><div class="desc">Auditoría de 5 conversaciones — muestra muy pequeña (n=3 y n=2)</div>
+      <div class="chart-wrap short"><canvas id="chartComparativoProducto"></canvas></div>
+      <div class="small-note">⚠️ Tamaño de muestra insuficiente para generalizar — se reporta con evidencia, no como conclusión estadística.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ KB ============ -->
+<section class="block" id="kb">
+  <div class="block-head"><h2>Base de Conocimiento</h2><span class="tag">Doughnut · Top módulos · Progress</span></div>
+  <div class="grid-3">
+    <div class="card">
+      <h3>Estado de artículos</h3><div class="desc">1,036 artículos totales (snapshot 26 jun 2026)</div>
+      <div class="chart-wrap short"><canvas id="chartKBEstado"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Top módulos (KB por producto)</h3><div class="desc">Ranking real por volumen de artículos</div>
+      <ul class="ranklist" id="kbModulos"></ul>
+    </div>
+    <div class="card">
+      <h3>Calidad estructural del repositorio</h3>
+      <div id="kbProgress"></div>
+    </div>
+  </div>
+  <div class="analysis">
+    <b>Qué significa:</b> 93 artículos (9%) no tienen producto asignado ("Desconocido") y concentran 18 de los 44 borradores del sistema (41% de todos los borradores).
+    <b>Por qué ocurrió:</b> falta de mantenimiento de metadatos al migrar/crear contenido sin asignar colección o producto.
+    <b>Impacto:</b> reduce la capacidad de FIN de filtrar contenido relevante por producto. <b>Recomendación:</b> Sección 10.7 — reasignar producto a los 93 artículos "Desconocido" y fusionar los 7 grupos duplicados.
+  </div>
+</section>
+
+<!-- ============ TABLA DINÁMICA ============ -->
+<section class="block" id="tabla">
+  <div class="block-head"><h2>Tabla dinámica de conversaciones</h2><span class="tag">29 registros · ordenable · filtrable</span></div>
+  <div class="card">
+    <div class="desc">Haz clic en cualquier encabezado para ordenar. Usa el filtro de producto en la barra superior para acotar la tabla.</div>
+    <div class="table-scroll">
+      <table id="dynTable">
+        <thead><tr>
+          <th data-key="fecha">Fecha</th><th data-key="empresa">Empresa</th><th data-key="producto">Producto</th>
+          <th data-key="categoria">Categoría</th><th data-key="intencion">Motivo</th><th data-key="resultado">Resultado</th>
+          <th data-key="escalo">Escaló</th><th data-key="severidad">Severidad</th><th data-key="calidad">Calidad</th>
+        </tr></thead>
+        <tbody id="dynTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HALLAZGOS Y ALERTAS ============ -->
+<section class="block" id="hallazgos">
+  <div class="block-head"><h2>Hallazgos, alertas y oportunidades</h2></div>
+  <div class="grid-3">
+    <div class="card">
+      <h3>🔍 Hallazgos principales</h3>
+      <div class="finding-card"><h4>Núcleo comunicativo sólido</h4><p>Las pautas de tono/personalidad se activan en 76-92% de los casos sin fallas — el problema de FIN no es de forma.</p></div>
+      <div class="finding-card"><h4>2 patrones concentran el riesgo</h4><p>Demora en escalar (4 casos) y falta de pregunta de bifurcación inicial (6 casos) explican la mayoría de los desenlaces negativos.</p></div>
+      <div class="finding-card good"><h4>Caso benchmark documentado</h4><p>Audit conv. 3 (Alojamientos): 95/100, 5 min, 5 estrellas — plantilla de entrenamiento recomendada.</p></div>
+    </div>
+    <div class="card">
+      <h3>🚨 Alertas críticas</h3>
+      <div class="finding-card critical"><h4>Riesgo de churn no detectado</h4><p>RIOPARK (plan "EXTRACCION") amenazó explícitamente con migrar a Siigo. El sistema no activó ningún protocolo de retención.</p></div>
+      <div class="finding-card critical"><h4>Fricción de escalamiento documentada</h4><p>FIN retrasó 3 turnos el escalamiento pese a solicitud explícita repetida (audit conv. 5).</p></div>
+      <div class="finding-card warning"><h4>SLA humano de escalación no cumplido</h4><p>78.4% vs. meta 90% en el flujo posterior de Diana Zarate (agente humano, inbox Diagnóstico Restobar).</p></div>
+    </div>
+    <div class="card">
+      <h3>💡 Oportunidades</h3>
+      <div class="finding-card"><h4>12 artículos de KB priorizados</h4><p>Identificados con evidencia real de conversación sin respuesta documentada.</p></div>
+      <div class="finding-card"><h4>Calibración del FIS</h4><p>Las 29 conversaciones ya auditadas manualmente son el primer set de referencia para calibrar el modelo de scoring.</p></div>
+      <div class="finding-card"><h4>7 grupos de KB duplicados</h4><p>Fusionables de inmediato — bajo esfuerzo, mejora directa de precisión de FIN.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RECOMENDACIONES ESTRATÉGICAS ============ -->
+<section class="block" id="recomendaciones">
+  <div class="block-head"><h2>Recomendaciones Estratégicas</h2><span class="tag">Priorizadas por impacto</span></div>
+  <div class="reco-grid" id="recoGrid"></div>
+</section>
+
+<!-- ============ ROADMAP JULIO ============ -->
+<section class="block" id="roadmap">
+  <div class="block-head"><h2>Roadmap de mejoras — Julio 2026</h2></div>
+  <div class="card">
+    <div class="table-scroll">
+      <table id="roadmapTable"></table>
+    </div>
+  </div>
+</section>
+
+<div class="card methodology" style="margin-top:10px;">
+  <b>Fuentes reales utilizadas:</b> dataset_fin_25_conversaciones.md/csv/json · auditoria_fin_5_conversaciones.md ·
+  knowledge_inventory.json/csv · KNOWLEDGE_DIGITAL_TWIN.md · FIN_ARCHITECT_ENTERPRISE_v1.0_BETA.md ·
+  reports/auditoria_diana_zarate_jun2026.md · CHANGELOG.md / docs/CHANGELOG.md · historial de commits (git log).
+  Ningún valor de este dashboard fue estimado o inventado; los indicadores sin dato real disponible se marcan explícitamente.
+</div>
+
+</main>
+
+<footer>
+  FIN Architect · Dashboard Ejecutivo Junio 2026 · Documento interno de Loggro Operaciones CX · Generado el 2 de julio de 2026
+</footer>
+
+<script>
+/* ============================================================
+   DATOS REALES CONSOLIDADOS — FIN Architect, junio 2026
+   Fuente única: dataset_fin_25_conversaciones.md, auditoria_fin_5_conversaciones.md,
+   knowledge_inventory.json, KNOWLEDGE_DIGITAL_TWIN.md, FIN_ARCHITECT_ENTERPRISE_v1.0_BETA.md,
+   reports/auditoria_diana_zarate_jun2026.md
+   ============================================================ */
+const DATA = {"meta":{"periodo":"1-30 de junio de 2026","generado":"2 de julio de 2026","total_conversaciones_analizadas":29,"fuente_25":"dataset_fin_25_conversaciones.md (100% Restobar, 100% escaladas, 11-26 jun 2026)","fuente_5":"auditoria_fin_5_conversaciones.md (3 Restobar + 2 Alojamientos, 26 jun 2026, 1 caso compartido con la fuente de 25)"},"producto_distribucion":{"Restobar":27,"Alojamientos":2},"categoria_summary":[{"categoria":"Facturación Electrónica","frecuencia":6,"severidad_promedio":2.33},{"categoria":"Facturación POS","frecuencia":4,"severidad_promedio":3.75},{"categoria":"Comanda / Sincronización","frecuencia":4,"severidad_promedio":2.75},{"categoria":"Configuración Operativa","frecuencia":4,"severidad_promedio":2.0},{"categoria":"Suscripción y Pagos","frecuencia":3,"severidad_promedio":2.67},{"categoria":"Cierre de Caja","frecuencia":2,"severidad_promedio":3.5},{"categoria":"Gestión de Pedidos","frecuencia":1,"severidad_promedio":3.0},{"categoria":"Integración Terceros","frecuencia":1,"severidad_promedio":3.0}],"resolution_breakdown":{"Escalado a área especializada":4,"Resuelto":9,"Sin resolver":5,"Parcialmente resuelto":4,"Abandono":1,"Sin completar (externo)":1,"Queja formal":1},"iacr":[["IACR Usuario Básico",11],["IACR Riesgo Operativo",4],["IACR Cambio de Intención",4],["IACR Usuario Avanzado",2]],"urgency":[["Urgency Baja",18],["Urgency Media",2],["Urgency N/D",1]],"empresas":[["ALLEGRO COMIDA ITALIANA",3],["N/A",2],["ANIBAL ROA SANDOVAL",2],["GALILEA BRUNCH",1],["LA MAMONA SAS",1],["Mocca Pasión Por El Cafe",1],["Nasa Eats",1],["TEXAS BARRIL & PARRILLA",1],["BANCHAN S.A.S",1],["ASADERO EL VIEJO MANGO JR",1],["S127",1],["RIOPARK BEACH HOTEL",1],["Chorinanos La Leona",1],["GABY RT SAS",1],["LIZETH DAYANNA GOMEZ",1],["Batut Le Meridiem",1],["VIVALINAS",1],["RAMIREZ PARRA BRYAM",1],["RESTAURANTE RAICES",1],["CARLOS GALVEZ SANCHEZ",1],["MR BRASA ASADERO",1]],"day_distribution":[["2026-06-11",1],["2026-06-25",8],["2026-06-26",16]],"pautas_usadas_top15":[["[884013] Personalidad",23],["[805165] Emocional",20],["[878283] Continuidad",19],["[880386] Adaptación",19],["[881675] Ruido",19],["[883970] Claridad",19],["[878286] Precisión",18],["[657943] Resumen",16],["[884123] Escalamiento",16],["[878262] Reducción",15],["[884168] Contención",12],["[884062] KB",11],["[881687] Frustración",10],["[628279] Resolución progresiva",8],["[628310] Escalamiento persistencia",8]],"pautas_faltantes":[["[884168] Contención espera",2],["[628310] Escalamiento por persistencia (al 2do pedido de agente)",1],["[635548] Diagnóstico previo (para detectar conflicto Pymes/Restobar más rápido)",1],["[628310] Escalamiento persistencia: debió activarse más rápido (ttfa=1751s inaceptable)",1],["[884013] Personalidad",1],["[884026] Obtención contexto",1],["[628310] Escalamiento persistencia: debió activarse al 2do fracaso (3x misma respuesta sin resolución)",1],["[884168] Contención espera (urgencia con clientes en local); escalamiento urgente por riesgo operativo + churn",1],["[883970] Claridad",1],["[884026] Obtención contexto (preguntar QUÉ necesita antes de asumir)",1],["[635546] Diagnóstico: preguntar tipo de proveedor antes de responder",1],["[884123] Escalamiento humano (ausente en pautas listadas — escaló por trigger de workflow)",1]],"pautas_clasificacion":{"Excelente":["[884013] Personalidad","[878283] Continuidad","[883970] Claridad progresiva"],"Buena":["[657943] Resumen","[878262] Reducción de ruido","[884062] Uso de KB"],"Regular":["[628310] Escalamiento por persistencia","[884123] Escalamiento humano"],"Deficiente":["Escalamiento por solicitud de atención humana (caso RIOPARK)"]},"atributos_top20":[["Urgency Baja",18],["IACR Usuario Básico",11],["Validación Parcial",9],["IACR Riesgo Operativo",4],["IACR Cambio de Intención",4],["Correctamente Validado",4],["Emociones Negative",3],["Habilitar facturación electrónica",2],["Fuera de horario",2],["Cierre de caja",2],["Urgency Media",2],["IACR Usuario Avanzado",2],["Anulación de POS",1],["Tipo chat Asesoría",1],["Error de facturación",1],["Opción Imprimir",1],["Problema comandas",1],["Fuera de alcance",1],["Vincular facturación electrónica",1],["Duplicación facturación",1]],"atributos_gestion":[{"atributo":"IACR Cambio de Intención","accion":"Modificar","razon":"Detecta el síntoma pero no dispara re-diagnóstico"},{"atributo":"Urgency (Baja/Media)","accion":"Dividir","razon":"Falta nivel Crítica/P1 para emergencias operativas"},{"atributo":"Nivel de insatisfacción","accion":"Mantener (forzar captura)","razon":"Existe pero queda vacío en la mayoría de casos"},{"atributo":"IACR Usuario Básico/Avanzado","accion":"Fusionar en nivel_usuario","razon":"Falta granularidad y enrutamiento L1/L2"},{"atributo":"Riesgo de Churn","accion":"Mantener (conectar a plan de cuenta)","razon":"Falla crítica no detectada en caso EXTRACCION"}],"articulos_kb_usados":[["Restobar funciona sin internet",2],["Cómo revisar cuadre de caja",2],["Cómo crear combo",2],["Cómo realizar pago suscripción con Loggro Admin",2],["Habilitación FE en Restobar Loggro",2],["FE en Restobar: Guía Completa",2]],"ttfa_list":[205,85,222,192,1751,107,518,1246,218,2324,814,1058,625,147,2614,263,228,487,67,230,437,505,245,2275,196],"quality_series":[{"fecha":"2026-06-11 17:00","calidad":40,"frustracion":90,"churn":60,"severidad":5},{"fecha":"2026-06-25 17:10","calidad":30,"frustracion":55,"churn":20,"severidad":3},{"fecha":"2026-06-25 18:16","calidad":55,"frustracion":40,"churn":15,"severidad":3},{"fecha":"2026-06-25 19:36","calidad":55,"frustracion":35,"churn":10,"severidad":2},{"fecha":"2026-06-25 20:18","calidad":65,"frustracion":30,"churn":10,"severidad":2},{"fecha":"2026-06-25 21:11","calidad":40,"frustracion":30,"churn":10,"severidad":2},{"fecha":"2026-06-25 21:51","calidad":50,"frustracion":45,"churn":30,"severidad":3},{"fecha":"2026-06-25 23:13","calidad":60,"frustracion":35,"churn":20,"severidad":3},{"fecha":"2026-06-25 23:39","calidad":70,"frustracion":15,"churn":10,"severidad":2},{"fecha":"2026-06-26 00:29","calidad":20,"frustracion":55,"churn":20,"severidad":2},{"fecha":"2026-06-26 00:45","calidad":35,"frustracion":25,"churn":10,"severidad":1},{"fecha":"2026-06-26 00:54","calidad":50,"frustracion":50,"churn":15,"severidad":3},{"fecha":"2026-06-26 01:10","calidad":30,"frustracion":45,"churn":20,"severidad":3},{"fecha":"2026-06-26 01:19","calidad":65,"frustracion":30,"churn":20,"severidad":3},{"fecha":"2026-06-26 01:23","calidad":25,"frustracion":80,"churn":70,"severidad":4},{"fecha":"2026-06-26 02:12","calidad":70,"frustracion":20,"churn":10,"severidad":2},{"fecha":"2026-06-26 02:37","calidad":40,"frustracion":50,"churn":20,"severidad":4},{"fecha":"2026-06-26 03:10","calidad":65,"frustracion":40,"churn":15,"severidad":3},{"fecha":"2026-06-26 04:36","calidad":40,"frustracion":70,"churn":30,"severidad":4},{"fecha":"2026-06-26 12:49","calidad":30,"frustracion":65,"churn":35,"severidad":3},{"fecha":"2026-06-26 12:59","calidad":45,"frustracion":35,"churn":10,"severidad":2},{"fecha":"2026-06-26 13:28","calidad":70,"frustracion":20,"churn":10,"severidad":2},{"fecha":"2026-06-26 14:16","calidad":30,"frustracion":45,"churn":20,"severidad":3},{"fecha":"2026-06-26 16:09","calidad":50,"frustracion":25,"churn":10,"severidad":2},{"fecha":"2026-06-26 16:43","calidad":55,"frustracion":60,"churn":15,"severidad":3}],"audit5":[{"id":"215474852054733","producto":"Restobar","empresa":"ANIBAL ROA SANDOVAL","tema":"Eliminar pedido pagado","resultado":"Assumed Resolution (no confirmada)","tiempo_seg":1692,"calidad":62,"escalo":false},{"id":"215474851944579","producto":"Restobar","empresa":"MARIO ANDRES GRAJALES MONTOYA","tema":"Costo de productos no actualiza","resultado":"Confirmed Resolution","tiempo_seg":2320,"calidad":70,"escalo":false},{"id":"215474851922542","producto":"Alojamientos","empresa":"Hotel 45 Park","tema":"Factura electrónica hospedaje+consumo","resultado":"Confirmed Resolution 5/5","tiempo_seg":302,"calidad":95,"escalo":false},{"id":"215474851867111","producto":"Alojamientos","empresa":"Hotel Roma Urabá","tema":"Plantilla importación servicios","resultado":"Assumed Resolution (no confirmada)","tiempo_seg":1516,"calidad":78,"escalo":false},{"id":"215474851839804","producto":"Restobar","empresa":"RIOPARK BEACH HOTEL","tema":"Pago PSE vencido / suscripción","resultado":"Escalada, sin resolución, 1/5","tiempo_seg":3931,"calidad":38,"escalo":true}],"kb":{"total":1036,"publicados":992,"borradores":44,"sin_descripcion":7,"obsoletos":0,"duplicados_grupos":7,"huerfanos":5,"creados_junio":16,"actualizados_junio":33,"por_producto":{"Pymes":443,"Restobar":246,"Nomina":165,"Desconocido":93,"Alojamientos":89},"publicados_por_producto":{"Pymes":433,"Restobar":245,"Nomina":150,"Desconocido":75,"Alojamientos":89},"borradores_por_producto":{"Pymes":10,"Restobar":1,"Nomina":15,"Desconocido":18,"Alojamientos":0}},"fat":{"score_global":64,"veredicto":"BETA","dimensiones":[{"nombre":"Implementación funcional","peso":30,"score":75},{"nombre":"Cobertura de productos","peso":20,"score":25},{"nombre":"Calidad del conocimiento","peso":15,"score":85},{"nombre":"Arquitectura e integración","peso":15,"score":90},{"nombre":"Datos de entrenamiento","peso":10,"score":60},{"nombre":"Documentación","peso":10,"score":95}]},"diana_zarate":{"periodo":"1-25 junio 2026","casos_totales":54,"casos_gestionados":48,"sla_resolucion_3dias_pct":100,"sla_escalacion_24h_pct":78.4,"meta_sla_escalacion_pct":90,"tiempo_mediano_gestion":"5h 21m","p90":"47h 13m","nota":"Mide a un agente humano en el inbox Diagnóstico Restobar, NO el desempeño del bot FIN"},"escalamiento_motivos":{"Solicitud explícita de agente humano":9,"Requiere acceso a backend/admin":6,"Requiere área especializada":4,"Persistencia del problema":4,"Emergencia operativa":2},"commits_junio":{"total":120,"por_dia":{"24":39,"25":51,"26":11,"27":17,"30":2}},"heatmap":{"categories":["Cierre de Caja","Comanda / Sincronización","Configuración Operativa","Facturación Electrónica","Facturación POS","Gestión de Pedidos","Integración Terceros","Suscripción y Pagos"],"matrix":{"Cierre de Caja":{"1":0,"2":0,"3":1,"4":1,"5":0},"Comanda / Sincronización":{"1":0,"2":1,"3":3,"4":0,"5":0},"Configuración Operativa":{"1":0,"2":4,"3":0,"4":0,"5":0},"Facturación Electrónica":{"1":0,"2":4,"3":2,"4":0,"5":0},"Facturación POS":{"1":0,"2":0,"3":2,"4":1,"5":1},"Gestión de Pedidos":{"1":0,"2":0,"3":1,"4":0,"5":0},"Integración Terceros":{"1":0,"2":0,"3":1,"4":0,"5":0},"Suscripción y Pagos":{"1":1,"2":0,"3":1,"4":1,"5":0}}},"full_table":[{"id":"215474859325975","fecha":"2026-06-26 16:43","empresa":"GALILEA BRUNCH","producto":"Restobar","intencion":"Anulación factura POS","categoria":"Facturación POS","resultado":"Escalado a área especializada","escalo":"Sí","severidad":3,"calidad":55,"frustracion":60,"churn":15},{"id":"215474858858915","fecha":"2026-06-26 16:09","empresa":"ALLEGRO COMIDA ITALIANA","producto":"Restobar","intencion":"Habilitar facturación electrónica","categoria":"Facturación Electrónica","resultado":"Resuelto","escalo":"Sí","severidad":2,"calidad":50,"frustracion":25,"churn":10},{"id":"215474857557649","fecha":"2026-06-26 14:16","empresa":"N/A","producto":"Restobar","intencion":"Error de facturación","categoria":"Facturación Electrónica","resultado":"Escalado a área especializada","escalo":"Sí","severidad":3,"calidad":30,"frustracion":45,"churn":20},{"id":"215474856338404","fecha":"2026-06-26 12:59","empresa":"LA MAMONA SAS","producto":"Restobar","intencion":"Opción imprimir comanda","categoria":"Comanda / Sincronización","resultado":"Resuelto","escalo":"Sí","severidad":2,"calidad":45,"frustracion":35,"churn":10},{"id":"215474856178695","fecha":"2026-06-26 12:49","empresa":"Mocca Pasión Por El Cafe","producto":"Restobar","intencion":"Problema impresión comanda","categoria":"Comanda / Sincronización","resultado":"Sin resolver","escalo":"Sí","severidad":3,"calidad":30,"frustracion":65,"churn":35},{"id":"215474856959210","fecha":"2026-06-26 13:28","empresa":"Nasa Eats","producto":"Restobar","intencion":"Vincular facturación electrónica","categoria":"Facturación Electrónica","resultado":"Parcialmente resuelto","escalo":"Sí","severidad":2,"calidad":70,"frustracion":20,"churn":10},{"id":"215474852663874","fecha":"2026-06-26 04:36","empresa":"TEXAS BARRIL & PARRILLA","producto":"Restobar","intencion":"Duplicación de facturación","categoria":"Facturación POS","resultado":"Sin resolver","escalo":"Sí","severidad":4,"calidad":40,"frustracion":70,"churn":30},{"id":"215474852314144","fecha":"2026-06-26 03:10","empresa":"ANIBAL ROA SANDOVAL","producto":"Restobar","intencion":"Borrado de ventas","categoria":"Gestión de Pedidos","resultado":"Escalado a área especializada","escalo":"Sí","severidad":3,"calidad":65,"frustracion":40,"churn":15},{"id":"215474852189640","fecha":"2026-06-26 02:37","empresa":"N/A","producto":"Restobar","intencion":"Cierre de caja bloqueado","categoria":"Cierre de Caja","resultado":"Parcialmente resuelto","escalo":"Sí","severidad":4,"calidad":40,"frustracion":50,"churn":20},{"id":"215474852096262","fecha":"2026-06-26 02:12","empresa":"BANCHAN S.A.S","producto":"Restobar","intencion":"Modificar costo producción","categoria":"Configuración Operativa","resultado":"Resuelto","escalo":"Sí","severidad":2,"calidad":70,"frustracion":20,"churn":10},{"id":"215474851819090","fecha":"2026-06-26 01:19","empresa":"ASADERO EL VIEJO MANGO JR","producto":"Restobar","intencion":"Integración SIIGO","categoria":"Integración Terceros","resultado":"Escalado a área especializada","escalo":"Sí","severidad":3,"calidad":65,"frustracion":30,"churn":20},{"id":"215474851628990","fecha":"2026-06-26 00:54","empresa":"S127","producto":"Restobar","intencion":"Facturas no visibles en ventas","categoria":"Facturación POS","resultado":"Resuelto","escalo":"Sí","severidad":3,"calidad":50,"frustracion":50,"churn":15},{"id":"215474851839804","fecha":"2026-06-26 01:23","empresa":"RIOPARK BEACH HOTEL","producto":"Restobar","intencion":"Pago PSE vencido / sistema caído","categoria":"Suscripción y Pagos","resultado":"Sin resolver","escalo":"Sí","severidad":4,"calidad":25,"frustracion":80,"churn":70},{"id":"215474851764270","fecha":"2026-06-26 01:10","empresa":"Chorinanos La Leona","producto":"Restobar","intencion":"Factura pendiente / mesa abierta","categoria":"Comanda / Sincronización","resultado":"Abandono","escalo":"Sí","severidad":3,"calidad":30,"frustracion":45,"churn":20},{"id":"215474851495555","fecha":"2026-06-26 00:29","empresa":"GABY RT SAS","producto":"Restobar","intencion":"Organizar combos por zona","categoria":"Configuración Operativa","resultado":"Sin resolver","escalo":"Sí","severidad":2,"calidad":20,"frustracion":55,"churn":20},{"id":"215474851587202","fecha":"2026-06-26 00:45","empresa":"LIZETH DAYANNA GOMEZ","producto":"Restobar","intencion":"Consulta vencimiento plan","categoria":"Suscripción y Pagos","resultado":"Resuelto","escalo":"Sí","severidad":1,"calidad":35,"frustracion":25,"churn":10},{"id":"215474851192878","fecha":"2026-06-25 23:39","empresa":"ALLEGRO COMIDA ITALIANA","producto":"Restobar","intencion":"Activar factura electrónica","categoria":"Facturación Electrónica","resultado":"Sin completar (externo)","escalo":"Sí","severidad":2,"calidad":70,"frustracion":15,"churn":10},{"id":"215474851035023","fecha":"2026-06-25 23:13","empresa":"Batut Le Meridiem","producto":"Restobar","intencion":"Facturas electrónicas sin cupo","categoria":"Facturación Electrónica","resultado":"Parcialmente resuelto","escalo":"Sí","severidad":3,"calidad":60,"frustracion":35,"churn":20},{"id":"215474850202077","fecha":"2026-06-25 21:51","empresa":"VIVALINAS","producto":"Restobar","intencion":"Cobro automático inesperado","categoria":"Suscripción y Pagos","resultado":"Resuelto","escalo":"Sí","severidad":3,"calidad":50,"frustracion":45,"churn":30},{"id":"215474849969071","fecha":"2026-06-25 21:11","empresa":"ANIBAL ROA SANDOVAL","producto":"Restobar","intencion":"Registro deuda proveedor","categoria":"Configuración Operativa","resultado":"Resuelto","escalo":"Sí","severidad":2,"calidad":40,"frustracion":30,"churn":10},{"id":"215474849488509","fecha":"2026-06-25 20:18","empresa":"RAMIREZ PARRA BRYAM","producto":"Restobar","intencion":"Error al cargar logo","categoria":"Configuración Operativa","resultado":"Resuelto","escalo":"Sí","severidad":2,"calidad":65,"frustracion":30,"churn":10},{"id":"215474849031198","fecha":"2026-06-25 19:36","empresa":"ALLEGRO COMIDA ITALIANA","producto":"Restobar","intencion":"Habilitar facturación electrónica","categoria":"Facturación Electrónica","resultado":"Parcialmente resuelto","escalo":"Sí","severidad":2,"calidad":55,"frustracion":35,"churn":10},{"id":"215474848280738","fecha":"2026-06-25 18:16","empresa":"RESTAURANTE RAICES","producto":"Restobar","intencion":"Cierre de caja con datáfono","categoria":"Cierre de Caja","resultado":"Resuelto","escalo":"Sí","severidad":3,"calidad":55,"frustracion":40,"churn":15},{"id":"215474846335711","fecha":"2026-06-25 17:10","empresa":"CARLOS GALVEZ SANCHEZ","producto":"Restobar","intencion":"Acceso página principal / comanda","categoria":"Comanda / Sincronización","resultado":"Sin resolver","escalo":"Sí","severidad":3,"calidad":30,"frustracion":55,"churn":20},{"id":"215474655520773","fecha":"2026-06-11 17:00","empresa":"MR BRASA ASADERO","producto":"Restobar","intencion":"Facturas represadas / sin sincronizar","categoria":"Facturación POS","resultado":"Queja formal","escalo":"Sí","severidad":5,"calidad":40,"frustracion":90,"churn":60},{"id":"215474852054733","fecha":"2026-06-26 02:02","empresa":"ANIBAL ROA SANDOVAL","producto":"Restobar","intencion":"Eliminar pedido pagado","categoria":"Gestión de Pedidos","resultado":"Assumed (no confirmada)","escalo":"No","severidad":null,"calidad":62,"frustracion":null,"churn":null},{"id":"215474851944579","fecha":"2026-06-26 01:42","empresa":"MARIO ANDRES GRAJALES","producto":"Restobar","intencion":"Costo de productos no actualiza","categoria":"Configuración Operativa","resultado":"Confirmed Resolution","escalo":"No","severidad":null,"calidad":70,"frustracion":null,"churn":null},{"id":"215474851922542","fecha":"2026-06-26 01:38","empresa":"Hotel 45 Park","producto":"Alojamientos","intencion":"Factura electrónica combinada","categoria":"Facturación Electrónica","resultado":"Confirmed 5/5 (Benchmark)","escalo":"No","severidad":null,"calidad":95,"frustracion":null,"churn":null},{"id":"215474851867111","fecha":"2026-06-26 01:29","empresa":"Hotel Roma Urabá","producto":"Alojamientos","intencion":"Plantilla importación servicios","categoria":"Configuración Operativa","resultado":"Assumed (no confirmada)","escalo":"No","severidad":null,"calidad":78,"frustracion":null,"churn":null}]};
+
+const RECOMENDACIONES = [
+ {p:"alta",titulo:"Escalamiento inmediato ante solicitud repetida",esfuerzo:"Bajo",impacto:"Alto",beneficio:"Menos fricción en momentos de máxima tensión",reduccion:"Directo — 4+ casos (01,05,07,12,audit5)"},
+ {p:"alta",titulo:"Protocolo de interrupción de servicio activa",esfuerzo:"Bajo-Medio",impacto:"Alto",beneficio:"Evita ofrecer autoservicio cuando hay operación en curso",reduccion:"Alto — caso de peor desenlace (RIOPARK)"},
+ {p:"alta",titulo:"Detección de plan EXTRACCION → protocolo de retención",esfuerzo:"Bajo-Medio",impacto:"Alto",beneficio:"Convierte señal ya disponible en acción preventiva",reduccion:"Indirecto — reduce churn silencioso"},
+ {p:"alta",titulo:"Crear 12 artículos KB priorizados",esfuerzo:"Medio",impacto:"Alto",beneficio:"Cierra huecos de contenido activos y documentados",reduccion:"Directo — 1 artículo por caso real"},
+ {p:"alta",titulo:"Verificación de variable de bifurcación antes de responder",esfuerzo:"Medio",impacto:"Alto",beneficio:"Reduce respuestas iniciales incorrectas (20.7% de la muestra)",reduccion:"Directo — convs. 03,16,20,24"},
+ {p:"media",titulo:"Expandir dataset a Pymes y Nómina",esfuerzo:"Alto",impacto:"Medio-Alto",beneficio:"Condición de entrada a v2.0 (criterio propio del proyecto)",reduccion:"No aplica directamente"},
+ {p:"media",titulo:"Fusionar 7 grupos KB duplicados + reasignar 93 'Desconocido'",esfuerzo:"Medio",impacto:"Medio",beneficio:"Menos riesgo de contenido parcial/duplicado",reduccion:"Indirecto"},
+ {p:"media",titulo:"Incorporar nivel_usuario, estado_bloqueo_sistema, consulta_vs_accion",esfuerzo:"Medio",impacto:"Medio",beneficio:"Mejora precisión de enrutamiento y primera respuesta",reduccion:"Indirecto"},
+ {p:"media",titulo:"Adjuntar KB + resumen automático en notas de escalamiento",esfuerzo:"Bajo-Medio",impacto:"Medio",beneficio:"Reduce tiempo de gestión del agente humano",reduccion:"No reduce volumen, mejora tiempo de gestión"},
+ {p:"media",titulo:"Detección automática de loop de repetición",esfuerzo:"Medio",impacto:"Medio",beneficio:"Menor frustración acumulada",reduccion:"Directo — convs. 07,12"},
+ {p:"baja",titulo:"Publicar o retirar 44 artículos en borrador",esfuerzo:"Bajo",impacto:"Bajo",beneficio:"Limpieza de inventario",reduccion:"Ninguna directa"},
+ {p:"baja",titulo:"Revisar criterio de obsolescencia de KB",esfuerzo:"Bajo",impacto:"Bajo",beneficio:"Detección más precisa de huecos de contenido",reduccion:"Ninguna directa"},
+ {p:"baja",titulo:"Usar caso benchmark como plantilla de entrenamiento",esfuerzo:"Bajo",impacto:"Bajo",beneficio:"Estandariza patrón de mejor desempeño",reduccion:"Ninguna directa"},
+];
+
+const ROADMAP = [
+ ["Alta","Calibrar FIS con 50 conversaciones reales vs. evaluación humana","Alto","Habilita medición automática de calidad","Prerrequisito de todo lo demás","No aplica directamente"],
+ ["Alta","Pauta de escalamiento inmediato + protocolo de interrupción activa","Bajo","Elimina el patrón de error más frecuente","Menos fricción en momentos críticos","Directo (4+ casos)"],
+ ["Alta","Activar detección de plan EXTRACCION","Bajo-Medio","Señal ya disponible → acción preventiva","Reduce riesgo de churn silencioso","Indirecto"],
+ ["Alta","Crear 12 artículos KB priorizados","Medio","Cierra huecos de contenido activos","Reduce reincidencia de consultas","Directo"],
+ ["Alta","Verificación de bifurcación antes de primera respuesta","Medio","Reduce 20.7% de errores de la muestra","Menos re-trabajo","Directo"],
+ ["Media","Expandir dataset a Pymes y Nómina","Alto","Condición de entrada a v2.0","Elimina mayor gap de cobertura (FAT 25/100)","No aplica directamente"],
+ ["Media","Fusionar duplicados KB + reasignar 'Desconocido'","Medio","Reduce fragmentación","Menos riesgo de contenido duplicado","Indirecto"],
+ ["Media","Incorporar 3 atributos nuevos al catálogo","Medio","Mejora precisión de enrutamiento","Menos diagnósticos equivocados","Indirecto"],
+ ["Media","Adjuntar KB+resumen en notas de escalamiento","Bajo-Medio","Reduce tiempo de gestión humana","Complementa SLA de escalación (78.4%→90%)","No reduce volumen"],
+ ["Media","Detección automática de loop de repetición","Medio","Reduce turnos previos a escalar","Menor frustración acumulada","Directo"],
+ ["Baja","Publicar o retirar 44 artículos borrador","Bajo","Limpieza de inventario","Mejora higiene del repositorio","Ninguna directa"],
+ ["Baja","Revisar criterio de obsolescencia KB","Bajo","Mejor detección de huecos no capturados","Mantenimiento más preciso","Ninguna directa"],
+ ["Baja","Usar caso benchmark como plantilla","Bajo","Referencia de calidad reutilizable","Estandariza mejor desempeño observado","Ninguna directa"],
+ ["Baja","Validación manual del PCS (20 conversaciones, objetivo 90 días)","Alto","Habilita segundo modelo de calidad","Complementa al FIS a mediano plazo","No aplica en julio"],
+];
+
+/* ============================================================
+   TEMA VISUAL PARA CHART.JS
+   Todo este bloque va envuelto en try/catch: si el CDN de Chart.js
+   no carga (sin internet, firewall corporativo, etc.), el resto del
+   dashboard (tabla dinámica, recomendaciones, roadmap) debe seguir funcionando.
+   ============================================================ */
+try {
+const C = {s1:'#2a78d6',s2:'#1baf7a',s3:'#eda100',s4:'#008300',s5:'#4a3aa7',s6:'#e34948',s7:'#e87ba4',s8:'#eb6834',
+  good:'#0ca30c',warning:'#fab219',serious:'#ec835a',critical:'#d03b3b',ink:'#0b0b0b',ink2:'#52514e',muted:'#898781',grid:'#e1e0d9'};
+const PAL = [C.s1,C.s2,C.s3,C.s4,C.s5,C.s6,C.s7,C.s8];
+Chart.defaults.font.family = "system-ui,-apple-system,'Segoe UI',sans-serif";
+Chart.defaults.font.size = 11.5;
+Chart.defaults.color = C.ink2;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.boxWidth = 8;
+Chart.defaults.plugins.tooltip.backgroundColor = '#0b0b0b';
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 8;
+Chart.defaults.elements.bar.borderRadius = 4;
+Chart.defaults.elements.bar.borderSkipped = false;
+const gridOpt = {color:C.grid, drawBorder:false};
+
+function fmtSec(s){ if(s==null) return 'N/D'; const m = Math.round(s/60*10)/10; return m+' min'; }
+
+/* ============================================================
+   CHARTS
+   ============================================================ */
+new Chart(document.getElementById('chartProducto'), {
+  type:'doughnut',
+  data:{labels:Object.keys(DATA.producto_distribucion), datasets:[{data:Object.values(DATA.producto_distribucion), backgroundColor:[C.s1,C.s2], borderColor:'#fff', borderWidth:2}]},
+  options:{plugins:{legend:{position:'bottom'}}, cutout:'62%'}
+});
+
+new Chart(document.getElementById('chartCategoria'), {
+  type:'bar',
+  data:{labels:DATA.categoria_summary.map(c=>c.categoria), datasets:[{label:'Conversaciones', data:DATA.categoria_summary.map(c=>c.frecuencia), backgroundColor:C.s1}]},
+  options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:gridOpt,beginAtZero:true,ticks:{precision:0}},y:{grid:{display:false}}}}
+});
+
+(function(){
+  const baja = DATA.urgency.find(u=>u[0]==='Urgency Baja')[1];
+  const media = DATA.urgency.find(u=>u[0]==='Urgency Media')[1];
+  const nd = DATA.urgency.find(u=>u[0]==='Urgency N/D')[1];
+  const noCapturado = 25 - baja - media - nd;
+  new Chart(document.getElementById('chartPrioridad'), {
+    type:'pie',
+    data:{labels:['Baja','Media','N/D (explícito)','No capturado'], datasets:[{data:[baja,media,nd,noCapturado], backgroundColor:[C.s2,C.s3,C.muted,C.grid]}]},
+    options:{plugins:{legend:{position:'bottom'}}}
+  });
+})();
+
+new Chart(document.getElementById('chartMotivos'), {
+  type:'bar',
+  data:{labels:DATA.categoria_summary.map(c=>c.categoria), datasets:[
+    {label:'Frecuencia', data:DATA.categoria_summary.map(c=>c.frecuencia), backgroundColor:C.s1},
+  ]},
+  options:{indexAxis:'y', plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:(ctx)=>{const c=DATA.categoria_summary[ctx.dataIndex]; return 'Severidad prom.: '+c.severidad_promedio+'/5';}}}}, scales:{x:{grid:gridOpt,beginAtZero:true,ticks:{precision:0}},y:{grid:{display:false}}}}
+});
+
+document.getElementById('topIncidencias').innerHTML = `
+<ul class="ranklist">
+  <li><span class="rank-num">1</span><div style="flex:1"><b>Suscripción vencida + operación activa</b><div style="font-size:11px;color:var(--muted)">RIOPARK — churn 70/100, calificación 1/5</div></div></li>
+  <li><span class="rank-num">2</span><div style="flex:1"><b>Facturas represadas sin sincronizar</b><div style="font-size:11px;color:var(--muted)">Queja formal escrita, churn 60/100</div></div></li>
+  <li><span class="rank-num">3</span><div style="flex:1"><b>Duplicación de factura con faltante en caja</b><div style="font-size:11px;color:var(--muted)">Severidad 4, sin resolución confirmada</div></div></li>
+  <li><span class="rank-num">4</span><div style="flex:1"><b>Versión de comanda desactualizada</b><div style="font-size:11px;color:var(--muted)">TTFA 37 min, calificación 2/5</div></div></li>
+  <li><span class="rank-num">5</span><div style="flex:1"><b>Impresión de comanda sin resolución</b><div style="font-size:11px;color:var(--muted)">Rechazo de instalación remota, calificación 2/5</div></div></li>
+</ul>`;
+
+document.getElementById('repeatedList').innerHTML = DATA.categoria_summary.filter(c=>c.frecuencia>=2).map(c=>`
+  <li><span class="rank-num" style="background:${C.s2}">${c.frecuencia}</span>
+  <div style="flex:1"><b>${c.categoria}</b></div>
+  <span class="rank-val">${c.frecuencia}/29</span></li>`).join('');
+
+new Chart(document.getElementById('chartEmpresas'), {
+  type:'bar',
+  data:{labels:DATA.empresas.slice(0,8).map(e=>e[0]), datasets:[{label:'Contactos', data:DATA.empresas.slice(0,8).map(e=>e[1]), backgroundColor:C.s5}]},
+  options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:gridOpt,beginAtZero:true,ticks:{precision:0}},y:{grid:{display:false}}}}
+});
+
+new Chart(document.getElementById('chartPautas'), {
+  type:'bar',
+  data:{labels:DATA.pautas_usadas_top15.map(p=>p[0]), datasets:[{label:'Veces activada (de 25)', data:DATA.pautas_usadas_top15.map(p=>p[1]), backgroundColor:C.s1}]},
+  options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:gridOpt,beginAtZero:true,max:25},y:{grid:{display:false}}}}
+});
+
+(function(){
+  const cls = DATA.pautas_clasificacion;
+  const badgeClass = {Excelente:'badge-excelente',Buena:'badge-buena',Regular:'badge-regular',Deficiente:'badge-deficiente'};
+  let html = '';
+  for(const k of ['Excelente','Buena','Regular','Deficiente']){
+    html += `<div style="margin-bottom:12px;"><span class="badge ${badgeClass[k]}">${k}</span>
+    <ul style="margin:8px 0 0;padding-left:18px;font-size:12.3px;color:var(--ink-2);">`;
+    cls[k].forEach(p=>html+=`<li>${p}</li>`);
+    html += `</ul></div>`;
+  }
+  document.getElementById('pautasClasificacion').innerHTML = html;
+})();
+
+new Chart(document.getElementById('chartAtributos'), {
+  type:'bar',
+  data:{labels:DATA.atributos_top20.map(a=>a[0]), datasets:[{label:'Frecuencia', data:DATA.atributos_top20.map(a=>a[1]), backgroundColor:C.s2}]},
+  options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:gridOpt,beginAtZero:true,ticks:{precision:0}},y:{grid:{display:false},ticks:{font:{size:10}}}}}
+});
+
+new Chart(document.getElementById('chartIACR'), {
+  type:'polarArea',
+  data:{labels:DATA.iacr.map(i=>i[0]), datasets:[{data:DATA.iacr.map(i=>i[1]), backgroundColor:[C.s1+'cc',C.s6+'cc',C.s3+'cc',C.s5+'cc']}]},
+  options:{plugins:{legend:{position:'bottom'}}}
+});
+
+(function(){
+  const rows = DATA.atributos_gestion;
+  const badgeMap = {'Modificar':'badge-media','Dividir':'badge-alta','Mantener (forzar captura)':'badge-buena','Fusionar en nivel_usuario':'badge-media','Mantener (conectar a plan de cuenta)':'badge-buena'};
+  let html = '<thead><tr><th>Atributo</th><th>Acción recomendada</th><th>Justificación</th></tr></thead><tbody>';
+  rows.forEach(r=>{ html += `<tr><td><b>${r.atributo}</b></td><td><span class="badge ${badgeMap[r.accion]||'badge-media'}">${r.accion}</span></td><td>${r.razon}</td></tr>`; });
+  html += '</tbody>';
+  document.getElementById('tableAtributosGestion').innerHTML = html;
+})();
+
+(function(){
+  const escalo = 25, noEscalo = 4;
+  new Chart(document.getElementById('chartEscalo'), {
+    type:'doughnut',
+    data:{labels:['Escaló a humano','No escaló'], datasets:[{data:[escalo,noEscalo], backgroundColor:[C.critical,C.good], borderColor:'#fff', borderWidth:2}]},
+    options:{plugins:{legend:{position:'bottom'}}, cutout:'62%'}
+  });
+})();
+
+new Chart(document.getElementById('chartMotivosEsc'), {
+  type:'bar',
+  data:{labels:Object.keys(DATA.escalamiento_motivos), datasets:[{label:'Casos', data:Object.values(DATA.escalamiento_motivos), backgroundColor:C.s8}]},
+  options:{indexAxis:'y', plugins:{legend:{display:false}}, scales:{x:{grid:gridOpt,beginAtZero:true,ticks:{precision:0}},y:{grid:{display:false}}}}
+});
+
+(function(){
+  // Stacked bar: categoria x resultado real
+  const cats = DATA.categoria_summary.map(c=>c.categoria);
+  const resultados = ['Resuelto','Parcialmente resuelto','Sin resolver','Escalado a área especializada','Abandono','Sin completar (externo)','Queja formal'];
+  const byCatRes = {};
+  DATA.full_table.filter(r=>r.escalo==='Sí').forEach(r=>{
+    byCatRes[r.categoria] = byCatRes[r.categoria] || {};
+    byCatRes[r.categoria][r.resultado] = (byCatRes[r.categoria][r.resultado]||0)+1;
+  });
+  const colorsRes = [C.good,C.s3,C.critical,C.s1,C.muted,C.s7,C.s6];
+  const datasets = resultados.map((res,i)=>({
+    label:res, backgroundColor:colorsRes[i],
+    data: cats.map(c => (byCatRes[c] && byCatRes[c][res]) ? byCatRes[c][res] : 0)
+  }));
+  new Chart(document.getElementById('chartStackedResCat'), {
+    type:'bar',
+    data:{labels:cats, datasets},
+    options:{plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true,grid:{display:false},ticks:{font:{size:10}}},y:{stacked:true,grid:gridOpt,beginAtZero:true,ticks:{precision:0}}}}
+  });
+})();
+
+new Chart(document.getElementById('chartResolucion'), {
+  type:'pie',
+  data:{labels:Object.keys(DATA.resolution_breakdown), datasets:[{data:Object.values(DATA.resolution_breakdown), backgroundColor:[C.good,C.s3,C.critical,C.s1,C.muted,C.s7,C.s6]}]},
+  options:{plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:10.5}}}}}
+});
+
+document.getElementById('progressBars').innerHTML = `
+  <div class="progress-row"><div class="pr-label"><span>KB publicados</span><b>95.8%</b></div><div class="progress-track"><div class="progress-fill" style="width:95.8%;background:${C.good}"></div></div></div>
+  <div class="progress-row"><div class="pr-label"><span>SLA resolución ≤3 días (agente humano)</span><b>100%</b></div><div class="progress-track"><div class="progress-fill" style="width:100%;background:${C.good}"></div></div></div>
+  <div class="progress-row"><div class="pr-label"><span>SLA escalación &lt;24h (agente humano) vs meta 90%</span><b>78.4%</b></div><div class="progress-track"><div class="progress-fill" style="width:78.4%;background:${C.warning}"></div></div></div>
+  <div class="progress-row"><div class="pr-label"><span>Resueltos en muestra escalada (25)</span><b>36%</b></div><div class="progress-track"><div class="progress-fill" style="width:36%;background:${C.s1}"></div></div></div>
+  <div class="progress-row"><div class="pr-label"><span>Madurez de software (FAT)</span><b>64/100</b></div><div class="progress-track"><div class="progress-fill" style="width:64%;background:${C.s5}"></div></div></div>
+  <div class="small-note">% de atributos correctos y % de pautas cumplidas agregados: <b>NO DISPONIBLE</b> — no existe medición estadística poblacional, solo fallas puntuales documentadas.</div>
+`;
+
+new Chart(document.getElementById('chartTendenciaDiaria'), {
+  type:'line',
+  data:{labels:DATA.day_distribution.map(d=>d[0]), datasets:[{label:'Conversaciones', data:DATA.day_distribution.map(d=>d[1]), borderColor:C.s1, backgroundColor:C.s1+'33', fill:true, tension:.3, pointRadius:5}]},
+  options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,grid:gridOpt,ticks:{precision:0}},x:{grid:{display:false}}}}
+});
+
+new Chart(document.getElementById('chartEvolucionCalidad'), {
+  type:'line',
+  data:{labels:DATA.quality_series.map(q=>q.fecha.slice(5,16)), datasets:[{label:'Calidad diagnóstico', data:DATA.quality_series.map(q=>q.calidad), borderColor:C.s5, backgroundColor:C.s5+'26', fill:true, tension:.35, pointRadius:2}]},
+  options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100,grid:gridOpt},x:{grid:{display:false},ticks:{maxRotation:60,minRotation:60,font:{size:9}}}}}
+});
+
+new Chart(document.getElementById('chartTTFA'), {
+  type:'line',
+  data:{labels:DATA.quality_series.map(q=>q.fecha.slice(5,16)), datasets:[{label:'TTFA (segundos)', data:DATA.ttfa_list, borderColor:C.s8, backgroundColor:C.s8+'26', fill:true, tension:.3, pointRadius:2}]},
+  options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:(ctx)=>'TTFA: '+fmtSec(ctx.raw)}}}, scales:{y:{beginAtZero:true,grid:gridOpt,ticks:{callback:(v)=>Math.round(v/60)+'m'}},x:{grid:{display:false},ticks:{maxRotation:60,minRotation:60,font:{size:9}}}}}
+});
+
+(function(){
+  const cats = DATA.heatmap.categories;
+  const sevs=[1,2,3,4,5];
+  const maxVal = Math.max(...cats.flatMap(c=>sevs.map(s=>DATA.heatmap.matrix[c][s])));
+  function colorFor(v){
+    if(v===0) return '#eef1f5';
+    const t = v/maxVal;
+    // blue ramp light->dark
+    const steps = ['#cde2fb','#9ec5f4','#5598e7','#2a78d6','#184f95'];
+    const idx = Math.min(steps.length-1, Math.round(t*(steps.length-1)));
+    return steps[idx];
+  }
+  let html = '<thead><tr><th></th>' + sevs.map(s=>`<th style="text-align:center">Sev. ${s}</th>`).join('') + '</tr></thead><tbody>';
+  cats.forEach(c=>{
+    html += `<tr><td class="heat-row-label">${c}</td>`;
+    sevs.forEach(s=>{
+      const v = DATA.heatmap.matrix[c][s];
+      const bg = colorFor(v);
+      const textColor = v>=3 ? '#fff':'#52514e';
+      html += `<td class="heatmap-cell" style="background:${bg};color:${textColor}">${v}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('heatmapTable').innerHTML = html;
+})();
+
+new Chart(document.getElementById('chartRadarSeveridad'), {
+  type:'radar',
+  data:{labels:DATA.categoria_summary.map(c=>c.categoria), datasets:[{label:'Severidad promedio (1-5)', data:DATA.categoria_summary.map(c=>c.severidad_promedio), borderColor:C.s6, backgroundColor:C.s6+'33', pointBackgroundColor:C.s6}]},
+  options:{plugins:{legend:{display:false}}, scales:{r:{min:0,max:5,grid:{color:C.grid},angleLines:{color:C.grid},ticks:{stepSize:1,backdropColor:'transparent'},pointLabels:{font:{size:9.5}}}}}
+});
+
+(function(){
+  const rest = DATA.audit5.filter(a=>a.producto==='Restobar').map(a=>a.calidad);
+  const aloj = DATA.audit5.filter(a=>a.producto==='Alojamientos').map(a=>a.calidad);
+  const avg = arr => Math.round((arr.reduce((a,b)=>a+b,0)/arr.length)*10)/10;
+  new Chart(document.getElementById('chartComparativoProducto'), {
+    type:'bar',
+    data:{labels:['Restobar (n='+rest.length+')','Alojamientos (n='+aloj.length+')'], datasets:[{label:'Calidad promedio', data:[avg(rest),avg(aloj)], backgroundColor:[C.s1,C.s2]}]},
+    options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,max:100,grid:gridOpt}}}
+  });
+})();
+
+new Chart(document.getElementById('chartKBEstado'), {
+  type:'doughnut',
+  data:{labels:['Publicados','Borradores'], datasets:[{data:[DATA.kb.publicados, DATA.kb.borradores], backgroundColor:[C.good,C.warning], borderColor:'#fff', borderWidth:2}]},
+  options:{plugins:{legend:{position:'bottom'}}, cutout:'62%'}
+});
+
+(function(){
+  const entries = Object.entries(DATA.kb.por_producto).sort((a,b)=>b[1]-a[1]);
+  const max = entries[0][1];
+  document.getElementById('kbModulos').innerHTML = entries.map((e,i)=>`
+    <li><span class="rank-num">${i+1}</span>
+    <div style="flex:1"><b>${e[0]}</b>
+      <div class="rank-bar-track" style="margin-top:4px;"><div class="rank-bar-fill" style="width:${(e[1]/max*100)}%"></div></div>
+    </div>
+    <span class="rank-val">${e[1]}</span></li>`).join('');
+})();
+
+document.getElementById('kbProgress').innerHTML = `
+  <div class="progress-row"><div class="pr-label"><span>Sin descripción</span><b>${DATA.kb.sin_descripcion}/${DATA.kb.total}</b></div><div class="progress-track"><div class="progress-fill" style="width:${(DATA.kb.sin_descripcion/DATA.kb.total*100)}%;background:${C.warning}"></div></div></div>
+  <div class="progress-row"><div class="pr-label"><span>Grupos duplicados</span><b>${DATA.kb.duplicados_grupos} grupos (14 artículos)</b></div><div class="progress-track"><div class="progress-fill" style="width:${(14/DATA.kb.total*100)}%;background:${C.serious}"></div></div></div>
+  <div class="progress-row"><div class="pr-label"><span>Huérfanos (sin colección)</span><b>${DATA.kb.huerfanos}/${DATA.kb.total}</b></div><div class="progress-track"><div class="progress-fill" style="width:${(DATA.kb.huerfanos/DATA.kb.total*100)}%;background:${C.serious}"></div></div></div>
+  <div class="progress-row"><div class="pr-label"><span>Actualizados en junio 2026</span><b>${DATA.kb.actualizados_junio}/${DATA.kb.total}</b></div><div class="progress-track"><div class="progress-fill" style="width:${(DATA.kb.actualizados_junio/DATA.kb.total*100)}%;background:${C.s1}"></div></div></div>
+  <div class="small-note">Obsoletos por antigüedad (&gt;12 meses sin actualizar): <b>0</b> — el criterio automático no detecta ninguno, aunque sí existen huecos de contenido activos documentados en la Sección 10 del informe.</div>
+`;
+} catch(e) {
+  console.error('No se pudieron renderizar los gráficos (Chart.js no cargó desde el CDN):', e);
+  document.querySelectorAll('.chart-wrap, .heatmap-table, #kbModulos, #kbProgress, #progressBars, #pautasClasificacion, #tableAtributosGestion, #topIncidencias, #repeatedList').forEach(el=>{
+    if(!el.dataset.filled){
+      el.innerHTML = '<div style="padding:24px 12px;text-align:center;color:#a3221f;font-size:12px;background:#fff6f6;border-radius:8px;">⚠️ No se pudo cargar Chart.js desde el CDN (cdn.jsdelivr.net). Verifica tu conexión a internet y recarga la página. El resto del dashboard (tabla, hallazgos, recomendaciones y roadmap) funciona normalmente.</div>';
+    }
+  });
+}
+
+/* ============================================================
+   TABLA DINÁMICA
+   ============================================================ */
+let currentSort = {key:null, dir:1};
+let currentFilter = 'Todos';
+
+function renderTable(){
+  const rows = DATA.full_table.filter(r => currentFilter==='Todos' || r.producto===currentFilter);
+  if(currentSort.key){
+    rows.sort((a,b)=>{
+      let va = a[currentSort.key], vb = b[currentSort.key];
+      if(va==null) va = -1; if(vb==null) vb = -1;
+      if(typeof va === 'string'){ va=va.toLowerCase(); vb=(vb||'').toLowerCase(); }
+      if(va<vb) return -1*currentSort.dir;
+      if(va>vb) return 1*currentSort.dir;
+      return 0;
+    });
+  }
+  document.getElementById('dynTableBody').innerHTML = rows.map(r=>`
+    <tr>
+      <td>${r.fecha}</td><td>${r.empresa}</td><td>${r.producto}</td><td>${r.categoria}</td>
+      <td>${r.intencion}</td><td>${r.resultado}</td>
+      <td>${r.escalo==='Sí'?'<span class="badge badge-alta">Sí</span>':'<span class="badge badge-baja">No</span>'}</td>
+      <td>${r.severidad ?? 'N/D'}</td><td>${r.calidad ?? 'N/D'}</td>
+    </tr>`).join('');
+  document.getElementById('chipTotal').textContent = rows.length + ' conversaciones ' + (currentFilter==='Todos'?'analizadas':'('+currentFilter+')');
+}
+document.querySelectorAll('#dynTable th').forEach(th=>{
+  th.addEventListener('click', ()=>{
+    const key = th.dataset.key;
+    if(currentSort.key===key){ currentSort.dir *= -1; } else { currentSort = {key, dir:1}; }
+    document.querySelectorAll('#dynTable th').forEach(t=>t.classList.remove('sort-asc','sort-desc'));
+    th.classList.add(currentSort.dir===1?'sort-asc':'sort-desc');
+    renderTable();
+  });
+});
+function applyFilter(){
+  currentFilter = document.getElementById('productFilter').value;
+  renderTable();
+}
+renderTable();
+
+/* ============================================================
+   RECOMENDACIONES Y ROADMAP
+   ============================================================ */
+document.getElementById('recoGrid').innerHTML = RECOMENDACIONES.map(r=>`
+  <div class="reco-card p-${r.p}">
+    <span class="badge badge-${r.p}">${r.p.toUpperCase()}</span>
+    <h4 style="margin-top:8px;">${r.titulo}</h4>
+    <div class="reco-meta">
+      <div><span>Esfuerzo</span>${r.esfuerzo}</div>
+      <div><span>Impacto</span>${r.impacto}</div>
+      <div><span>Beneficio operativo</span>${r.beneficio}</div>
+      <div><span>Reducción de escalamientos</span>${r.reduccion}</div>
+    </div>
+  </div>`).join('');
+
+(function(){
+  let html = '<thead><tr><th>Prioridad</th><th>Iniciativa</th><th>Esfuerzo</th><th>Impacto esperado</th><th>Beneficio operativo</th><th>Reducción de escalamientos</th></tr></thead><tbody>';
+  ROADMAP.forEach(r=>{
+    const badgeClass = r[0]==='Alta'?'badge-alta':(r[0]==='Media'?'badge-media':'badge-baja');
+    html += `<tr><td><span class="badge ${badgeClass}">${r[0]}</span></td><td><b>${r[1]}</b></td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td><td>${r[5]}</td></tr>`;
+  });
+  html += '</tbody>';
+  document.getElementById('roadmapTable').innerHTML = html;
+})();
+</script>
+</body>
+</html>
